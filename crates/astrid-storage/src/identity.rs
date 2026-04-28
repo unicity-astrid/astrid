@@ -118,6 +118,23 @@ pub trait IdentityStore: Send + Sync + fmt::Debug {
     ///
     /// Returns [`IdentityError::Storage`] if the read fails.
     async fn get_user_by_name(&self, name: &str) -> Result<Option<AstridUserId>, IdentityError>;
+
+    /// Remove a user record, every link pointing at it, and the display
+    /// name index. Returns `true` if the user existed (and was deleted),
+    /// `false` if the UUID was already absent (idempotent).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IdentityError::Storage`] if any underlying read, scan,
+    /// or delete fails.
+    async fn delete_user(&self, id: Uuid) -> Result<bool, IdentityError>;
+
+    /// List every user record currently in the store.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IdentityError::Storage`] if the scan or any read fails.
+    async fn list_users(&self) -> Result<Vec<AstridUserId>, IdentityError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -358,6 +375,81 @@ impl IdentityStore for KvIdentityStore {
             },
             None => Ok(None),
         }
+    }
+
+    async fn delete_user(&self, id: Uuid) -> Result<bool, IdentityError> {
+        let Some(user) = self.get_user(id).await? else {
+            return Ok(false);
+        };
+
+        // Drop every link that points at this user. We scan `link/` and
+        // delete matches — O(links) per delete, but the link table is
+        // small (one row per (platform, platform_user) pair).
+        let link_keys = self
+            .kv
+            .list_keys_with_prefix("link/")
+            .await
+            .map_err(|e| IdentityError::Storage(e.to_string()))?;
+        for key in link_keys {
+            if let Some(link) = self
+                .kv
+                .get_json::<FrontendLink>(&key)
+                .await
+                .map_err(|e| IdentityError::Storage(e.to_string()))?
+                && link.astrid_user_id == id
+            {
+                self.kv
+                    .delete(&key)
+                    .await
+                    .map_err(|e| IdentityError::Storage(e.to_string()))?;
+            }
+        }
+
+        // Drop the name index entry, but only if it still points at this
+        // UUID — `get_user_by_name` is best-effort and two users can
+        // share a display name if created in sequence.
+        if let Some(name) = user.display_name.as_deref() {
+            let key = Self::name_key(name.trim());
+            if let Some(bytes) = self
+                .kv
+                .get(&key)
+                .await
+                .map_err(|e| IdentityError::Storage(e.to_string()))?
+                && String::from_utf8(bytes).ok().as_deref() == Some(id.to_string().as_str())
+            {
+                self.kv
+                    .delete(&key)
+                    .await
+                    .map_err(|e| IdentityError::Storage(e.to_string()))?;
+            }
+        }
+
+        // Finally drop the user record itself.
+        self.kv
+            .delete(&Self::user_key(id))
+            .await
+            .map_err(|e| IdentityError::Storage(e.to_string()))?;
+        Ok(true)
+    }
+
+    async fn list_users(&self) -> Result<Vec<AstridUserId>, IdentityError> {
+        let keys = self
+            .kv
+            .list_keys_with_prefix("user/")
+            .await
+            .map_err(|e| IdentityError::Storage(e.to_string()))?;
+        let mut users = Vec::with_capacity(keys.len());
+        for key in keys {
+            if let Some(user) = self
+                .kv
+                .get_json::<AstridUserId>(&key)
+                .await
+                .map_err(|e| IdentityError::Storage(e.to_string()))?
+            {
+                users.push(user);
+            }
+        }
+        Ok(users)
     }
 }
 
@@ -621,5 +713,97 @@ mod tests {
         let store = make_store();
         let err = store.resolve("disc\0rd", "123").await.unwrap_err();
         assert!(matches!(err, IdentityError::InvalidInput(_)));
+    }
+
+    // ── delete_user / list_users (issue #672) ────────────────────────
+
+    #[tokio::test]
+    async fn delete_user_removes_record_and_links() {
+        let store = make_store();
+        let alice = store.create_user(Some("Alice")).await.unwrap();
+        store
+            .link("discord", "a1", alice.id, "admin")
+            .await
+            .unwrap();
+        store
+            .link("telegram", "a2", alice.id, "admin")
+            .await
+            .unwrap();
+
+        assert!(store.delete_user(alice.id).await.unwrap());
+        assert!(store.get_user(alice.id).await.unwrap().is_none());
+        // Links must not resolve after delete.
+        assert!(store.resolve("discord", "a1").await.unwrap().is_none());
+        assert!(store.resolve("telegram", "a2").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_user_idempotent_for_missing_uuid() {
+        let store = make_store();
+        assert!(!store.delete_user(Uuid::new_v4()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn delete_user_preserves_other_users_links() {
+        let store = make_store();
+        let alice = store.create_user(Some("Alice")).await.unwrap();
+        let bob = store.create_user(Some("Bob")).await.unwrap();
+        store
+            .link("discord", "a1", alice.id, "admin")
+            .await
+            .unwrap();
+        store.link("discord", "b1", bob.id, "admin").await.unwrap();
+
+        assert!(store.delete_user(alice.id).await.unwrap());
+        // Bob's link is intact.
+        let resolved = store.resolve("discord", "b1").await.unwrap();
+        assert_eq!(resolved.unwrap().id, bob.id);
+    }
+
+    #[tokio::test]
+    async fn delete_user_clears_name_index_when_unique() {
+        let store = make_store();
+        let user = store.create_user(Some("Unique")).await.unwrap();
+        assert!(store.delete_user(user.id).await.unwrap());
+        assert!(store.get_user_by_name("Unique").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_user_leaves_name_index_when_it_points_to_a_different_uuid() {
+        // Name index is last-writer-wins (best-effort). After User B shares
+        // a display name with User A, the index points to B. Deleting A
+        // must not blow away B's index entry.
+        let store = make_store();
+        let a = store.create_user(Some("Shared")).await.unwrap();
+        let b = store.create_user(Some("Shared")).await.unwrap();
+        assert!(store.delete_user(a.id).await.unwrap());
+        let found = store.get_user_by_name("Shared").await.unwrap();
+        assert_eq!(found.unwrap().id, b.id);
+    }
+
+    #[tokio::test]
+    async fn list_users_returns_every_created_user() {
+        let store = make_store();
+        let a = store.create_user(Some("a")).await.unwrap();
+        let b = store.create_user(Some("b")).await.unwrap();
+        let c = store.create_user(None).await.unwrap();
+
+        let mut users = store.list_users().await.unwrap();
+        users.sort_by_key(|u| u.id);
+        let mut expected = vec![a, b, c];
+        expected.sort_by_key(|u| u.id);
+        assert_eq!(users, expected);
+    }
+
+    #[tokio::test]
+    async fn list_users_after_delete_excludes_deleted() {
+        let store = make_store();
+        let a = store.create_user(Some("a")).await.unwrap();
+        let b = store.create_user(Some("b")).await.unwrap();
+        store.delete_user(a.id).await.unwrap();
+
+        let users = store.list_users().await.unwrap();
+        assert_eq!(users.len(), 1);
+        assert_eq!(users[0].id, b.id);
     }
 }

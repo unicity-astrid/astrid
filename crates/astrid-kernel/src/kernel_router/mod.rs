@@ -1,3 +1,6 @@
+/// Admin management API dispatcher (issue #672, Layer 6).
+pub mod admin;
+
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
@@ -7,6 +10,7 @@ use astrid_capabilities::{CapabilityCheck, PermissionError};
 use astrid_core::principal::PrincipalId;
 use astrid_events::ipc::{IpcMessage, IpcPayload};
 use astrid_events::kernel_api::{KernelRequest, KernelResponse};
+use serde::Serialize;
 use tracing::{debug, info, warn};
 
 /// Spawns background tasks for the kernel management API and connection tracking.
@@ -22,6 +26,8 @@ use tracing::{debug, info, warn};
 pub(crate) fn spawn_kernel_router(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHandle<()> {
     // Spawn the connection tracker as a sibling task.
     drop(spawn_connection_tracker(Arc::clone(&kernel)));
+    // Spawn the Layer 6 admin dispatcher as a sibling task (issue #672).
+    drop(admin::spawn_admin_router(Arc::clone(&kernel)));
 
     let mut receiver = kernel.event_bus.subscribe_topic("astrid.v1.request.*");
 
@@ -133,13 +139,17 @@ async fn handle_request(
         Ok(()) => {
             record_admin_audit(
                 kernel,
-                &caller,
-                method,
-                required_cap,
-                AuthorizationProof::System {
-                    reason: format!("policy allow: {caller} holds {required_cap}"),
+                AdminAuditEntry {
+                    caller: &caller,
+                    method,
+                    required_cap,
+                    target_principal: None,
+                    params: None,
+                    authorization: AuthorizationProof::System {
+                        reason: format!("policy allow: {caller} holds {required_cap}"),
+                    },
+                    outcome: AuditOutcome::success(),
                 },
-                AuditOutcome::success(),
             );
         },
         Err(e) => {
@@ -152,21 +162,19 @@ async fn handle_request(
             );
             record_admin_audit(
                 kernel,
-                &caller,
-                method,
-                required_cap,
-                AuthorizationProof::Denied {
-                    reason: e.to_string(),
+                AdminAuditEntry {
+                    caller: &caller,
+                    method,
+                    required_cap,
+                    target_principal: None,
+                    params: None,
+                    authorization: AuthorizationProof::Denied {
+                        reason: e.to_string(),
+                    },
+                    outcome: AuditOutcome::failure(e.to_string()),
                 },
-                AuditOutcome::failure(e.to_string()),
             );
-            publish_response(
-                kernel,
-                response_topic,
-                KernelResponse::Error(format!(
-                    "permission denied: missing capability {required_cap}"
-                )),
-            );
+            publish_response(kernel, response_topic, KernelResponse::Error(e.to_string()));
             return;
         },
     }
@@ -297,7 +305,7 @@ async fn handle_request(
     publish_response(kernel, response_topic, res);
 }
 
-fn publish_response(kernel: &Arc<crate::Kernel>, response_topic: String, res: KernelResponse) {
+fn publish_response<R: Serialize>(kernel: &Arc<crate::Kernel>, response_topic: String, res: R) {
     if let Ok(val) = serde_json::to_value(res) {
         let msg = IpcMessage::new(
             response_topic,
@@ -487,25 +495,69 @@ fn authorize_request(
             });
         },
     };
-    let check = CapabilityCheck::new(profile.as_ref(), &kernel.groups, caller.clone());
+    // Enabled gate runs BEFORE the capability check so a disabled
+    // principal cannot exercise any management API surface — even one
+    // they would otherwise be authorized for. The `default` principal
+    // is bootstrap-managed and `caps.revoke`/`agent.disable` against
+    // it are rejected up front, so this check cannot lock the
+    // single-tenant path.
+    if !profile.enabled {
+        warn!(
+            security_event = true,
+            principal = %caller,
+            required = required_cap,
+            "Disabled principal denied — fail-closed enforcement"
+        );
+        return Err(PermissionError::PrincipalDisabled {
+            principal: caller.clone(),
+        });
+    }
+    let groups = kernel.groups.load_full();
+    let check = CapabilityCheck::new(profile.as_ref(), groups.as_ref(), caller.clone());
     check.require(required_cap)
+}
+
+/// Bundled inputs for [`record_admin_audit`] — keeps the call site
+/// readable and the function under clippy's `too_many_arguments` cap.
+pub(crate) struct AdminAuditEntry<'a> {
+    /// Caller principal making the request.
+    pub caller: &'a PrincipalId,
+    /// Wire-name identifier for the request variant.
+    pub method: &'a str,
+    /// Capability string evaluated for this request.
+    pub required_cap: &'a str,
+    /// `None` when the request operates on the caller's own principal
+    /// (Layer 5) and `Some` when the request mutates another principal
+    /// (Layer 6 admin topics like `admin.quota.set`).
+    pub target_principal: Option<PrincipalId>,
+    /// Request payload for forensic replay (issue #672) — `None` for
+    /// [`KernelRequest`] entries that have no params struct, `Some` with
+    /// the wire payload for [`AdminKernelRequest`].
+    pub params: Option<serde_json::Value>,
+    /// Authorization proof (allow / deny).
+    pub authorization: AuthorizationProof,
+    /// Success or failure outcome.
+    pub outcome: AuditOutcome,
 }
 
 /// Append an `AdminRequest` audit entry for the given outcome. Failures
 /// to persist are logged but do not abort the request — the audit log
 /// degrades to "continue + alert" by design.
-fn record_admin_audit(
-    kernel: &crate::Kernel,
-    caller: &PrincipalId,
-    method: &str,
-    required_cap: &str,
-    authorization: AuthorizationProof,
-    outcome: AuditOutcome,
-) {
+fn record_admin_audit(kernel: &crate::Kernel, entry: AdminAuditEntry<'_>) {
+    let AdminAuditEntry {
+        caller,
+        method,
+        required_cap,
+        target_principal,
+        params,
+        authorization,
+        outcome,
+    } = entry;
     let action = AuditAction::AdminRequest {
         method: method.to_string(),
         required_capability: required_cap.to_string(),
-        target_principal: None,
+        target_principal,
+        params,
     };
     if let Err(e) = kernel.audit_log.append_with_principal(
         kernel.session_id.clone(),

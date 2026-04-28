@@ -23,6 +23,8 @@
 //!   ([`CapabilityCheck`](../../../astrid-capabilities/src/policy.rs))
 //!   treats it as fail-closed and logs a `warn!`.
 
+mod io_impl;
+
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
@@ -88,6 +90,15 @@ pub enum GroupConfigError {
     UnsafeUniversalGrant {
         /// Name of the offending custom group.
         group: String,
+    },
+    /// A runtime admin mutation targets a group name that does not
+    /// exist in the current config. Returned by
+    /// [`GroupConfig::modify_custom_group`] and
+    /// [`GroupConfig::remove_group`].
+    #[error("groups config: unknown group {name:?}")]
+    UnknownGroup {
+        /// Name of the group that could not be located.
+        name: String,
     },
 }
 
@@ -242,6 +253,115 @@ impl GroupConfig {
     pub fn iter(&self) -> impl Iterator<Item = (&String, &Group)> {
         self.groups.iter()
     }
+
+    /// Return `true` if `name` refers to one of the reserved built-in
+    /// groups ([`BUILTIN_ADMIN`], [`BUILTIN_AGENT`], [`BUILTIN_RESTRICTED`]).
+    #[must_use]
+    pub fn is_builtin_name(name: &str) -> bool {
+        is_builtin(name)
+    }
+
+    /// Return a new [`GroupConfig`] with a custom group inserted.
+    ///
+    /// Validates the group with the same rules the boot loader applies
+    /// to `groups.toml`: built-in names are rejected, every capability
+    /// passes [`validate_capability`], and the universal `*` pattern
+    /// requires `unsafe_admin = true`.
+    ///
+    /// # Errors
+    ///
+    /// - [`GroupConfigError::RedefinedBuiltin`] if `name` is a built-in.
+    /// - [`GroupConfigError::DuplicateName`] if `name` already exists in
+    ///   the custom set (an existing custom group must be removed or
+    ///   modified, not re-inserted).
+    /// - [`GroupConfigError::InvalidCapability`] on a bad capability
+    ///   string.
+    /// - [`GroupConfigError::UnsafeUniversalGrant`] if `group.capabilities`
+    ///   contains `*` without `unsafe_admin = true`.
+    pub fn insert_custom_group(&self, name: String, group: Group) -> GroupConfigResult<Self> {
+        if is_builtin(&name) {
+            return Err(GroupConfigError::RedefinedBuiltin { name });
+        }
+        if self.groups.contains_key(&name) {
+            return Err(GroupConfigError::DuplicateName { name });
+        }
+        validate_custom_group(&name, &group)?;
+
+        let mut next = self.groups.clone();
+        next.insert(name, group);
+        Ok(Self { groups: next })
+    }
+
+    /// Return a new [`GroupConfig`] with a partial update applied to a
+    /// custom group. Any field left as `None` is preserved.
+    ///
+    /// # Errors
+    ///
+    /// - [`GroupConfigError::RedefinedBuiltin`] if `name` is a built-in.
+    /// - [`GroupConfigError::DuplicateName`] if `name` is unknown — modify
+    ///   is strictly an update, not an upsert.
+    /// - [`GroupConfigError::InvalidCapability`] /
+    ///   [`GroupConfigError::UnsafeUniversalGrant`] from revalidation.
+    pub fn modify_custom_group(
+        &self,
+        name: &str,
+        capabilities: Option<Vec<String>>,
+        description: Option<Option<String>>,
+        unsafe_admin: Option<bool>,
+    ) -> GroupConfigResult<Self> {
+        if is_builtin(name) {
+            return Err(GroupConfigError::RedefinedBuiltin {
+                name: name.to_string(),
+            });
+        }
+        let existing = self
+            .groups
+            .get(name)
+            .ok_or_else(|| GroupConfigError::UnknownGroup {
+                name: name.to_string(),
+            })?;
+        let mut updated = existing.clone();
+        if let Some(caps) = capabilities {
+            updated.capabilities = caps;
+        }
+        if let Some(desc) = description {
+            updated.description = desc;
+        }
+        if let Some(flag) = unsafe_admin {
+            updated.unsafe_admin = flag;
+        }
+        validate_custom_group(name, &updated)?;
+
+        let mut next = self.groups.clone();
+        next.insert(name.to_string(), updated);
+        Ok(Self { groups: next })
+    }
+
+    /// Return a new [`GroupConfig`] with `name` removed.
+    ///
+    /// Built-in groups cannot be removed and produce
+    /// [`GroupConfigError::RedefinedBuiltin`]. Removing an unknown custom
+    /// group produces [`GroupConfigError::DuplicateName`] (reused as the
+    /// "not a custom group I know about" sentinel).
+    ///
+    /// # Errors
+    ///
+    /// See above.
+    pub fn remove_group(&self, name: &str) -> GroupConfigResult<Self> {
+        if is_builtin(name) {
+            return Err(GroupConfigError::RedefinedBuiltin {
+                name: name.to_string(),
+            });
+        }
+        if !self.groups.contains_key(name) {
+            return Err(GroupConfigError::UnknownGroup {
+                name: name.to_string(),
+            });
+        }
+        let mut next = self.groups.clone();
+        next.remove(name);
+        Ok(Self { groups: next })
+    }
 }
 
 impl Default for GroupConfig {
@@ -269,7 +389,16 @@ fn builtin_entries() -> [(&'static str, Group); 3] {
         (
             BUILTIN_AGENT,
             Group {
-                capabilities: vec!["self:*".to_string(), "delegate:self:*".to_string()],
+                // `self:*` already subsumes self:quota:get / self:agent:list,
+                // but they are listed explicitly so operators reading the
+                // built-ins can see that agents have self-service visibility
+                // into their own quota and agent row (issue #672 Layer 6).
+                capabilities: vec![
+                    "self:*".to_string(),
+                    "self:quota:get".to_string(),
+                    "self:agent:list".to_string(),
+                    "delegate:self:*".to_string(),
+                ],
                 description: Some(
                     "Built-in agent — self-scoped capability grants for routine agent workflows"
                         .into(),
@@ -323,10 +452,13 @@ mod tests {
             cfg.get(BUILTIN_ADMIN).unwrap().capabilities,
             vec!["*".to_string()]
         );
-        assert_eq!(
-            cfg.get(BUILTIN_AGENT).unwrap().capabilities,
-            vec!["self:*".to_string(), "delegate:self:*".to_string()]
-        );
+        // Agent gets self:* plus explicit self-service visibility caps
+        // (self:quota:get, self:agent:list) added in Layer 6 / issue #672.
+        let agent_caps = &cfg.get(BUILTIN_AGENT).unwrap().capabilities;
+        assert!(agent_caps.contains(&"self:*".to_string()));
+        assert!(agent_caps.contains(&"self:quota:get".to_string()));
+        assert!(agent_caps.contains(&"self:agent:list".to_string()));
+        assert!(agent_caps.contains(&"delegate:self:*".to_string()));
         assert!(cfg.get(BUILTIN_RESTRICTED).unwrap().capabilities.is_empty());
     }
 
@@ -486,5 +618,171 @@ mod tests {
     fn get_returns_none_for_unknown_name() {
         let cfg = GroupConfig::builtin_only();
         assert!(cfg.get("not-a-real-group").is_none());
+    }
+
+    // ── Runtime mutation helpers (issue #672) ─────────────────────────
+
+    fn custom(caps: &[&str]) -> Group {
+        Group {
+            capabilities: caps.iter().map(|s| (*s).to_string()).collect(),
+            description: None,
+            unsafe_admin: false,
+        }
+    }
+
+    #[test]
+    fn insert_custom_group_adds_and_validates() {
+        let cfg = GroupConfig::builtin_only();
+        let next = cfg
+            .insert_custom_group("ops".to_string(), custom(&["capsule:install"]))
+            .unwrap();
+        assert!(next.get("ops").is_some());
+        // Original untouched (returned by value, immutable).
+        assert!(cfg.get("ops").is_none());
+    }
+
+    #[test]
+    fn insert_custom_group_rejects_builtin_name() {
+        let cfg = GroupConfig::builtin_only();
+        let err = cfg
+            .insert_custom_group(BUILTIN_ADMIN.to_string(), custom(&["system:shutdown"]))
+            .unwrap_err();
+        assert!(matches!(err, GroupConfigError::RedefinedBuiltin { .. }));
+    }
+
+    #[test]
+    fn insert_custom_group_rejects_duplicate_name() {
+        let cfg = GroupConfig::builtin_only()
+            .insert_custom_group("ops".to_string(), custom(&["capsule:install"]))
+            .unwrap();
+        let err = cfg
+            .insert_custom_group("ops".to_string(), custom(&["audit:read"]))
+            .unwrap_err();
+        assert!(matches!(err, GroupConfigError::DuplicateName { .. }));
+    }
+
+    #[test]
+    fn insert_custom_group_rejects_unsafe_star_without_opt_in() {
+        let err = GroupConfig::builtin_only()
+            .insert_custom_group("privileged".to_string(), custom(&["*"]))
+            .unwrap_err();
+        assert!(matches!(err, GroupConfigError::UnsafeUniversalGrant { .. }));
+    }
+
+    #[test]
+    fn insert_custom_group_rejects_invalid_capability_grammar() {
+        let err = GroupConfig::builtin_only()
+            .insert_custom_group("bad".to_string(), custom(&["system:shut down"]))
+            .unwrap_err();
+        assert!(matches!(err, GroupConfigError::InvalidCapability { .. }));
+    }
+
+    #[test]
+    fn modify_custom_group_updates_capabilities() {
+        let cfg = GroupConfig::builtin_only()
+            .insert_custom_group("ops".to_string(), custom(&["capsule:install"]))
+            .unwrap();
+        let next = cfg
+            .modify_custom_group(
+                "ops",
+                Some(vec!["capsule:install".into(), "capsule:remove".into()]),
+                None,
+                None,
+            )
+            .unwrap();
+        assert_eq!(next.get("ops").unwrap().capabilities.len(), 2);
+    }
+
+    #[test]
+    fn modify_custom_group_partial_update_preserves_other_fields() {
+        let cfg = GroupConfig::builtin_only()
+            .insert_custom_group(
+                "ops".to_string(),
+                Group {
+                    capabilities: vec!["capsule:install".into()],
+                    description: Some("original".into()),
+                    unsafe_admin: false,
+                },
+            )
+            .unwrap();
+        let next = cfg
+            .modify_custom_group("ops", None, Some(Some("updated".into())), None)
+            .unwrap();
+        let g = next.get("ops").unwrap();
+        assert_eq!(g.description.as_deref(), Some("updated"));
+        assert_eq!(g.capabilities, vec!["capsule:install".to_string()]);
+    }
+
+    #[test]
+    fn modify_custom_group_rejects_builtin() {
+        let cfg = GroupConfig::builtin_only();
+        let err = cfg
+            .modify_custom_group(BUILTIN_ADMIN, Some(vec!["audit:read".into()]), None, None)
+            .unwrap_err();
+        assert!(matches!(err, GroupConfigError::RedefinedBuiltin { .. }));
+    }
+
+    #[test]
+    fn modify_custom_group_rejects_unknown_name() {
+        let cfg = GroupConfig::builtin_only();
+        let err = cfg
+            .modify_custom_group("never-defined", Some(vec![]), None, None)
+            .unwrap_err();
+        assert!(matches!(err, GroupConfigError::UnknownGroup { .. }));
+    }
+
+    #[test]
+    fn modify_custom_group_revalidates_new_capabilities() {
+        let cfg = GroupConfig::builtin_only()
+            .insert_custom_group("ops".to_string(), custom(&["capsule:install"]))
+            .unwrap();
+        let err = cfg
+            .modify_custom_group(
+                "ops",
+                Some(vec!["system:shut down".into()]), // bad grammar
+                None,
+                None,
+            )
+            .unwrap_err();
+        assert!(matches!(err, GroupConfigError::InvalidCapability { .. }));
+    }
+
+    #[test]
+    fn remove_group_drops_custom_group() {
+        let cfg = GroupConfig::builtin_only()
+            .insert_custom_group("ops".to_string(), custom(&["capsule:install"]))
+            .unwrap();
+        assert!(cfg.get("ops").is_some());
+        let next = cfg.remove_group("ops").unwrap();
+        assert!(next.get("ops").is_none());
+        // Built-ins survive.
+        assert!(next.get(BUILTIN_ADMIN).is_some());
+    }
+
+    #[test]
+    fn remove_group_rejects_every_builtin() {
+        let cfg = GroupConfig::builtin_only();
+        for name in [BUILTIN_ADMIN, BUILTIN_AGENT, BUILTIN_RESTRICTED] {
+            let err = cfg.remove_group(name).unwrap_err();
+            assert!(
+                matches!(err, GroupConfigError::RedefinedBuiltin { .. }),
+                "expected RedefinedBuiltin for {name}, got {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn remove_group_rejects_unknown_name() {
+        let cfg = GroupConfig::builtin_only();
+        let err = cfg.remove_group("never-defined").unwrap_err();
+        assert!(matches!(err, GroupConfigError::UnknownGroup { .. }));
+    }
+
+    #[test]
+    fn is_builtin_name_covers_every_builtin() {
+        assert!(GroupConfig::is_builtin_name(BUILTIN_ADMIN));
+        assert!(GroupConfig::is_builtin_name(BUILTIN_AGENT));
+        assert!(GroupConfig::is_builtin_name(BUILTIN_RESTRICTED));
+        assert!(!GroupConfig::is_builtin_name("ops"));
     }
 }

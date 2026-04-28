@@ -71,6 +71,15 @@ pub enum PermissionError {
         /// The revoke pattern that matched.
         revoke_pattern: String,
     },
+    /// The principal's profile has `enabled = false`. The kernel refuses
+    /// every request from a disabled principal regardless of held
+    /// capabilities. Re-enable via `astrid.v1.admin.agent.enable` from
+    /// an admin principal whose profile remains enabled.
+    #[error("permission denied for principal {principal}: agent is disabled")]
+    PrincipalDisabled {
+        /// The resolved principal identifier.
+        principal: PrincipalId,
+    },
 }
 
 /// Borrowed evaluator over a resolved profile and the shared group

@@ -16,6 +16,7 @@ pub mod kernel_router;
 /// The Unix Domain Socket manager.
 pub mod socket;
 
+use arc_swap::ArcSwap;
 use astrid_audit::AuditLog;
 use astrid_capabilities::{CapabilityStore, DirHandle};
 use astrid_capsule::profile_cache::PrincipalProfileCache;
@@ -31,7 +32,7 @@ use dashmap::DashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 /// The core Operating System Kernel.
 pub struct Kernel {
@@ -115,14 +116,31 @@ pub struct Kernel {
     /// management IPC to clear entries at runtime (issue #666 tracks that
     /// follow-up).
     pub(crate) profile_cache: Arc<PrincipalProfileCache>,
-    /// Static group-to-capability configuration (issue #670).
+    /// Static group-to-capability configuration (issue #670), made
+    /// hot-reloadable in Layer 6 (issue #672).
     ///
-    /// Loaded once at boot from `$ASTRID_HOME/etc/groups.toml` and then
-    /// treated as immutable. The [`kernel_router::handle_request`]
-    /// enforcement preamble reads `groups` + the resolved
-    /// [`PrincipalProfile`](astrid_core::PrincipalProfile) through
-    /// [`CapabilityCheck`](astrid_capabilities::CapabilityCheck).
-    pub(crate) groups: Arc<GroupConfig>,
+    /// Loaded once at boot from `$ASTRID_HOME/etc/groups.toml`. The
+    /// enforcement preamble in [`kernel_router::handle_request`] /
+    /// `handle_admin_request` calls `groups.load_full()` on each request
+    /// — a lock-free `Arc` clone. Group admin topics
+    /// (`astrid.v1.admin.group.*`) rewrite `groups.toml` and then
+    /// `groups.store(Arc::new(new_config))` atomically; in-flight checks
+    /// holding the old `Arc` finish under the old config, the next check
+    /// sees the new one.
+    pub(crate) groups: Arc<ArcSwap<GroupConfig>>,
+    /// Home directory captured at boot — retained for the admin write
+    /// path (`groups.toml`, per-principal `profile.toml`) so handlers
+    /// don't re-resolve `$ASTRID_HOME` and risk a mid-life drift.
+    pub(crate) astrid_home: astrid_core::dirs::AstridHome,
+    /// Serializes mutating admin topics on `profile.toml` / `groups.toml`.
+    ///
+    /// Read-only admin topics (`agent.list`, `group.list`, `quota.get`)
+    /// and the hot authz path do NOT take this lock — the `ArcSwap` on
+    /// [`Kernel::groups`] and the `RwLock` on
+    /// [`PrincipalProfileCache`](astrid_capsule::profile_cache::PrincipalProfileCache)
+    /// cover reads. Tokio's `Mutex` is not poisonable — no
+    /// `PoisonError::into_inner` dance required.
+    pub(crate) admin_write_lock: Mutex<()>,
 }
 
 impl Kernel {
@@ -239,13 +257,13 @@ impl Kernel {
         let identity_store: Arc<dyn astrid_storage::IdentityStore> =
             Arc::new(astrid_storage::KvIdentityStore::new(identity_kv));
 
-        // Load group config (issue #670). Boot-loaded once, treated as
-        // immutable. Missing file → built-ins only; malformed TOML is a
-        // hard boot failure (fail-closed).
-        let groups =
-            Arc::new(GroupConfig::load(&home).map_err(|e| {
-                std::io::Error::other(format!("Failed to load groups config: {e}"))
-            })?);
+        // Load group config (issue #670). Boot-loaded once, then swapped
+        // atomically by Layer 6 admin topics (issue #672). Missing file
+        // → built-ins only; malformed TOML is a hard boot failure
+        // (fail-closed).
+        let groups_loaded = GroupConfig::load(&home)
+            .map_err(|e| std::io::Error::other(format!("Failed to load groups config: {e}")))?;
+        let groups = Arc::new(ArcSwap::from_pointee(groups_loaded));
 
         // Bootstrap the CLI root user (idempotent). Also seeds the
         // default principal's profile with `groups = ["admin"]` so
@@ -283,6 +301,8 @@ impl Kernel {
             identity_store,
             profile_cache: Arc::new(PrincipalProfileCache::with_home(home.clone())),
             groups,
+            astrid_home: home,
+            admin_write_lock: Mutex::new(()),
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -810,6 +830,123 @@ impl Kernel {
     }
 }
 
+/// Test-only lightweight constructor (issue #672) that builds a
+/// [`Kernel`] with just the fields the admin handlers touch:
+/// `event_bus`, `session_id`, `audit_log`, `profile_cache`,
+/// `identity_store`, `groups`, `astrid_home`, `admin_write_lock`, plus
+/// the shared allowance / capability / kv store handles. Skips the
+/// heavy boot bits (socket bind, MCP init, token generation, capsule
+/// discovery) that aren't load-bearing for admin-topic tests.
+///
+/// The `home` argument is used verbatim — tests pass a tempdir-rooted
+/// [`astrid_core::dirs::AstridHome`] so every call is fully isolated
+/// from the process-global `$ASTRID_HOME`.
+#[cfg(test)]
+pub(crate) async fn test_kernel_with_home(home: astrid_core::dirs::AstridHome) -> Arc<Kernel> {
+    use astrid_capsule::profile_cache::PrincipalProfileCache;
+
+    home.ensure()
+        .expect("test kernel: ensure astrid home dir tree");
+
+    let session_id = SessionId::SYSTEM;
+    let event_bus = Arc::new(EventBus::new());
+    let capsules = Arc::new(RwLock::new(CapsuleRegistry::new()));
+
+    // Persistent KV backing capabilities + identity store.
+    let kv = Arc::new(
+        astrid_storage::SurrealKvStore::open(&home.state_db_path()).expect("test kernel: open kv"),
+    );
+    let capabilities = Arc::new(
+        CapabilityStore::with_kv_store(Arc::clone(&kv) as Arc<dyn astrid_storage::KvStore>)
+            .expect("test kernel: capability store"),
+    );
+
+    // Audit log at the tempdir — chain verification is trivially Ok on a
+    // fresh log, no historical entries.
+    let runtime_key =
+        load_or_generate_runtime_key(&home.keys_dir()).expect("test kernel: runtime key");
+    let default_principal = astrid_core::PrincipalId::default();
+    let principal_home = home.principal_home(&default_principal);
+    principal_home
+        .ensure()
+        .expect("test kernel: ensure principal home");
+    let audit_log = Arc::new(
+        AuditLog::open(principal_home.audit_dir(), runtime_key)
+            .expect("test kernel: open audit log"),
+    );
+
+    // MCP: use a no-op secure client wrapped around an empty manager.
+    // Admin handlers do not touch MCP.
+    let mcp_manager = ServerManager::new(ServersConfig::default());
+    let mcp_client = McpClient::new(mcp_manager);
+    let mcp = SecureMcpClient::new(
+        mcp_client,
+        Arc::clone(&capabilities),
+        Arc::clone(&audit_log),
+        session_id.clone(),
+    );
+
+    let root_handle = DirHandle::new();
+    let kernel_host_vfs = HostVfs::new();
+    kernel_host_vfs
+        .register_dir(root_handle.clone(), home.root().to_path_buf())
+        .await
+        .expect("test kernel: register workspace vfs");
+    let overlay_registry = Arc::new(OverlayVfsRegistry::new(
+        home.root().to_path_buf(),
+        root_handle.clone(),
+    ));
+
+    let allowance_store = Arc::new(astrid_approval::AllowanceStore::new());
+    let identity_kv = astrid_storage::ScopedKvStore::new(
+        Arc::clone(&kv) as Arc<dyn astrid_storage::KvStore>,
+        "system:identity",
+    )
+    .expect("test kernel: identity kv scope");
+    let identity_store: Arc<dyn astrid_storage::IdentityStore> =
+        Arc::new(astrid_storage::KvIdentityStore::new(identity_kv));
+
+    let groups = Arc::new(ArcSwap::from_pointee(
+        GroupConfig::load(&home).expect("test kernel: load groups"),
+    ));
+
+    let kernel = Arc::new(Kernel {
+        session_id,
+        event_bus,
+        capsules,
+        mcp,
+        capabilities,
+        vfs: Arc::new(kernel_host_vfs) as Arc<dyn Vfs>,
+        overlay_registry,
+        vfs_root_handle: root_handle,
+        workspace_root: home.root().to_path_buf(),
+        home_root: Some(principal_home.root().to_path_buf()),
+        cli_socket_listener: None,
+        kv,
+        audit_log,
+        active_connections: DashMap::new(),
+        ephemeral: AtomicBool::new(false),
+        boot_time: std::time::Instant::now(),
+        shutdown_tx: tokio::sync::watch::channel(false).0,
+        session_token: Arc::new(astrid_core::session_token::SessionToken::generate()),
+        token_path: home.token_path(),
+        allowance_store,
+        identity_store,
+        profile_cache: Arc::new(PrincipalProfileCache::with_home(home.clone())),
+        groups,
+        astrid_home: home,
+        admin_write_lock: Mutex::new(()),
+    });
+    // Spawn the Layer 6 admin dispatcher so IPC-driven tests can drive
+    // the full publish → response loop. State-mutating tests that call
+    // `handlers::dispatch` directly are unaffected — those messages
+    // never hit the bus.
+    drop(kernel_router::admin::spawn_admin_router(Arc::clone(
+        &kernel,
+    )));
+    kernel
+}
+
 /// Loads the runtime signing key from `~/.astrid/keys/runtime.key`, generating a
 /// new one if it doesn't exist. Opens the `SurrealKV`-backed audit database at
 /// `~/.astrid/audit.db` and runs `verify_all()` to detect any tampering of
@@ -916,9 +1053,10 @@ fn load_or_generate_runtime_key(keys_dir: &Path) -> std::io::Result<KeyPair> {
 ///
 /// Configurable via `ASTRID_IDLE_TIMEOUT_SECS` (default 300 = 5 minutes).
 /// Number of permanent internal event bus subscribers that are not client
-/// connections: `KernelRouter` (`kernel.request.*`), `ConnectionTracker` (`client.*`),
-/// and `EventDispatcher` (all events).
-const INTERNAL_SUBSCRIBER_COUNT: usize = 3;
+/// connections: `KernelRouter` (`kernel.request.*`), `AdminRouter`
+/// (`kernel.admin.*`), `ConnectionTracker` (`client.*`), and
+/// `EventDispatcher` (all events).
+const INTERNAL_SUBSCRIBER_COUNT: usize = 4;
 
 /// Initial grace period before idle checking begins.
 const IDLE_INITIAL_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
@@ -1520,9 +1658,7 @@ mod tests {
     fn seed_admin_writes_fresh_profile_when_missing() {
         let (_d, home) = scratch_home();
         let default = astrid_core::PrincipalId::default();
-        let ph = home.principal_home(&default);
-        ph.ensure().unwrap();
-        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        let path = astrid_core::PrincipalProfile::path_for(&home, &default);
         assert!(!path.exists());
 
         seed_default_principal_admin_profile(&home).unwrap();
@@ -1537,14 +1673,12 @@ mod tests {
     fn seed_admin_is_idempotent_across_reboots() {
         let (_d, home) = scratch_home();
         let default = astrid_core::PrincipalId::default();
-        let ph = home.principal_home(&default);
-        ph.ensure().unwrap();
 
         seed_default_principal_admin_profile(&home).unwrap();
         seed_default_principal_admin_profile(&home).unwrap();
         seed_default_principal_admin_profile(&home).unwrap();
 
-        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        let path = astrid_core::PrincipalProfile::path_for(&home, &default);
         let profile = astrid_core::PrincipalProfile::load_from_path(&path).unwrap();
         // Still exactly one `admin` entry — no duplication.
         assert_eq!(profile.groups, vec!["admin".to_string()]);
@@ -1554,13 +1688,12 @@ mod tests {
     fn seed_admin_leaves_operator_configured_groups_intact() {
         let (_d, home) = scratch_home();
         let default = astrid_core::PrincipalId::default();
-        let ph = home.principal_home(&default);
-        ph.ensure().unwrap();
 
         // Operator wrote their own config pre-bootstrap.
         let mut existing = astrid_core::PrincipalProfile::default();
         existing.groups = vec!["agent".to_string()];
-        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        let path = astrid_core::PrincipalProfile::path_for(&home, &default);
+        std::fs::create_dir_all(home.profiles_dir()).unwrap();
         existing.save_to_path(&path).unwrap();
 
         seed_default_principal_admin_profile(&home).unwrap();
@@ -1573,12 +1706,11 @@ mod tests {
     fn seed_admin_leaves_operator_configured_grants_intact() {
         let (_d, home) = scratch_home();
         let default = astrid_core::PrincipalId::default();
-        let ph = home.principal_home(&default);
-        ph.ensure().unwrap();
 
         let mut existing = astrid_core::PrincipalProfile::default();
         existing.grants = vec!["system:status".to_string()];
-        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        let path = astrid_core::PrincipalProfile::path_for(&home, &default);
+        std::fs::create_dir_all(home.profiles_dir()).unwrap();
         existing.save_to_path(&path).unwrap();
 
         seed_default_principal_admin_profile(&home).unwrap();
@@ -1593,12 +1725,11 @@ mod tests {
     fn seed_admin_leaves_operator_configured_revokes_intact() {
         let (_d, home) = scratch_home();
         let default = astrid_core::PrincipalId::default();
-        let ph = home.principal_home(&default);
-        ph.ensure().unwrap();
 
         let mut existing = astrid_core::PrincipalProfile::default();
         existing.revokes = vec!["system:shutdown".to_string()];
-        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        let path = astrid_core::PrincipalProfile::path_for(&home, &default);
+        std::fs::create_dir_all(home.profiles_dir()).unwrap();
         existing.save_to_path(&path).unwrap();
 
         seed_default_principal_admin_profile(&home).unwrap();
@@ -1606,6 +1737,67 @@ mod tests {
         let profile = astrid_core::PrincipalProfile::load_from_path(&path).unwrap();
         assert!(profile.groups.is_empty());
         assert_eq!(profile.revokes, vec!["system:shutdown".to_string()]);
+    }
+
+    // ── Legacy profile path migration (issue #672) ──────────────────
+
+    #[test]
+    fn migrate_legacy_profile_relocates_to_etc() {
+        // Pre-#672 deployments wrote profile.toml under
+        // home/{principal}/.config/. The migration moves it to
+        // etc/profiles/{principal}.toml on first boot.
+        let (_d, home) = scratch_home();
+        let default = astrid_core::PrincipalId::default();
+        let legacy_path = home
+            .principal_home(&default)
+            .config_dir()
+            .join("profile.toml");
+        std::fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
+        let mut existing = astrid_core::PrincipalProfile::default();
+        existing.groups = vec!["operator-configured".to_string()];
+        existing.save_to_path(&legacy_path).unwrap();
+
+        seed_default_principal_admin_profile(&home).unwrap();
+
+        // Legacy path gone, new path holds the migrated content.
+        assert!(!legacy_path.exists());
+        let new_path = astrid_core::PrincipalProfile::path_for(&home, &default);
+        let migrated = astrid_core::PrincipalProfile::load_from_path(&new_path).unwrap();
+        assert_eq!(migrated.groups, vec!["operator-configured".to_string()]);
+    }
+
+    #[test]
+    fn migrate_legacy_profile_drops_stale_legacy_when_new_already_exists() {
+        // Operator already migrated by hand (or a prior boot did) —
+        // the new path holds the canonical config. Don't clobber it
+        // with the legacy file; just remove the legacy so capsules
+        // can't reach it through home://.
+        let (_d, home) = scratch_home();
+        let default = astrid_core::PrincipalId::default();
+
+        // Stale legacy with operator-stale content.
+        let legacy_path = home
+            .principal_home(&default)
+            .config_dir()
+            .join("profile.toml");
+        std::fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
+        let mut stale = astrid_core::PrincipalProfile::default();
+        stale.groups = vec!["stale".to_string()];
+        stale.save_to_path(&legacy_path).unwrap();
+
+        // Fresh new-path content (migrated already).
+        let new_path = astrid_core::PrincipalProfile::path_for(&home, &default);
+        std::fs::create_dir_all(new_path.parent().unwrap()).unwrap();
+        let mut canonical = astrid_core::PrincipalProfile::default();
+        canonical.groups = vec!["canonical".to_string()];
+        canonical.save_to_path(&new_path).unwrap();
+
+        seed_default_principal_admin_profile(&home).unwrap();
+
+        // Legacy removed, canonical preserved.
+        assert!(!legacy_path.exists());
+        let result = astrid_core::PrincipalProfile::load_from_path(&new_path).unwrap();
+        assert_eq!(result.groups, vec!["canonical".to_string()]);
     }
 }
 
@@ -1735,6 +1927,50 @@ async fn bootstrap_cli_root_user(
     Ok(())
 }
 
+/// Migrate a legacy per-principal `profile.toml` from the pre-#672
+/// location (`home/{principal}/.config/profile.toml`) to the
+/// system-managed `etc/profiles/{principal}.toml`. Idempotent across
+/// boots: if the new path exists, the old one is removed (assumed
+/// already migrated); if neither exists, no-op.
+///
+/// Profile contents are 100% system policy (enabled, groups, grants,
+/// revokes, quotas, auth public keys) and a capsule running with
+/// `fs_read = ["home://"]` could read its own policy from the legacy
+/// location. Moving it under `etc/` puts it outside the `home://` VFS
+/// scheme entirely.
+fn migrate_legacy_profile_path(
+    home: &astrid_core::dirs::AstridHome,
+    principal: &astrid_core::PrincipalId,
+) -> Result<(), std::io::Error> {
+    let legacy_path = home
+        .principal_home(principal)
+        .config_dir()
+        .join("profile.toml");
+    let new_path = home.profile_path(principal);
+    if !legacy_path.exists() {
+        return Ok(());
+    }
+    if new_path.exists() {
+        // Operator already migrated, or a prior boot did the rename.
+        // Drop the stale legacy file so capsules can no longer reach
+        // it via `home://.config/profile.toml`.
+        let _ = std::fs::remove_file(&legacy_path);
+        return Ok(());
+    }
+    if let Some(parent) = new_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::rename(&legacy_path, &new_path)?;
+    tracing::warn!(
+        %principal,
+        legacy = %legacy_path.display(),
+        new = %new_path.display(),
+        "Migrated profile.toml out of principal home directory \
+         (security: capsules with home:// fs_read could read the legacy file)"
+    );
+    Ok(())
+}
+
 /// Idempotently ensure the default principal's profile on disk has the
 /// built-in `admin` group, so the single-tenant CLI path carries full
 /// management-API capabilities (issue #670).
@@ -1745,15 +1981,26 @@ async fn bootstrap_cli_root_user(
 /// - Existing profile with `groups = []`, `grants = []`, `revokes = []`
 ///   → adds `admin` to `groups`. This covers the fresh-default case
 ///   where a prior boot wrote a `PrincipalProfile::default()`.
+///
+/// Also migrates the legacy `profile.toml` location
+/// (`home/{principal}/.config/`) to the new system-managed location
+/// (`etc/profiles/`) on first boot post-#672, see
+/// [`migrate_legacy_profile_path`].
 fn seed_default_principal_admin_profile(
     home: &astrid_core::dirs::AstridHome,
 ) -> Result<(), astrid_core::ProfileError> {
     use astrid_core::PrincipalProfile;
 
     let default_principal = astrid_core::PrincipalId::default();
-    let principal_home = home.principal_home(&default_principal);
 
-    let path = PrincipalProfile::path_for(&principal_home);
+    // Move any legacy file in front of load — load_from_path on the new
+    // path would otherwise return Default and clobber the operator's
+    // existing groups/grants/revokes.
+    if let Err(e) = migrate_legacy_profile_path(home, &default_principal) {
+        tracing::warn!(error = %e, "Failed to migrate legacy profile path — continuing");
+    }
+
+    let path = PrincipalProfile::path_for(home, &default_principal);
     let profile = PrincipalProfile::load_from_path(&path)?;
 
     if !profile.groups.is_empty() || !profile.grants.is_empty() || !profile.revokes.is_empty() {

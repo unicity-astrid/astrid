@@ -228,6 +228,29 @@ impl AstridHome {
         self.etc_dir().join("hooks")
     }
 
+    /// Per-principal profile directory (`etc/profiles/`).
+    ///
+    /// Per-principal `profile.toml` files live here, NOT inside the
+    /// principal's own home directory. Profile contents (enabled,
+    /// groups, grants, revokes, quotas, auth public keys, egress
+    /// policy, process allowlist) are system-managed policy: a capsule
+    /// running as a principal with `fs_read = ["home://"]` must not be
+    /// able to read its own policy, and `fs_write` must not let it
+    /// self-elevate. Keeping profiles under `etc/` puts them outside
+    /// the `home://` VFS scheme entirely.
+    #[must_use]
+    pub fn profiles_dir(&self) -> PathBuf {
+        self.etc_dir().join("profiles")
+    }
+
+    /// Per-principal profile path (`etc/profiles/{principal}.toml`).
+    /// See [`Self::profiles_dir`] for why this lives outside the
+    /// principal's home directory.
+    #[must_use]
+    pub fn profile_path(&self, id: &PrincipalId) -> PathBuf {
+        self.profiles_dir().join(format!("{id}.toml"))
+    }
+
     /// Persistent state directory (`var/`).
     #[must_use]
     pub fn var_dir(&self) -> PathBuf {

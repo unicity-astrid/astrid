@@ -421,6 +421,14 @@ pub enum AuditAction {
         /// themselves (today's variants have no target-principal field).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target_principal: Option<astrid_core::PrincipalId>,
+        /// Request params for forensic replay (issue #672 follow-up).
+        /// Captures what was actually asked — capabilities granted,
+        /// quotas set, group membership changed — so audit consumers
+        /// don't need to diff `profile.toml`/`groups.toml` snapshots
+        /// to reconstruct intent. `None` for legacy `KernelRequest`
+        /// entries that have no params struct.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        params: Option<serde_json::Value>,
     },
 }
 
@@ -517,6 +525,7 @@ impl AuditAction {
                 method,
                 required_capability,
                 target_principal,
+                params: _,
             } => match target_principal {
                 Some(target) => {
                     format!("Admin {method} on {target} (capability {required_capability})")

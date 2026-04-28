@@ -58,6 +58,7 @@ astrid-vfs = { path = "crates/astrid-vfs", version = "0.5.1" }
 astrid-workspace = { path = "crates/astrid-workspace", version = "0.5.1" }
 anyhow = "1.0"
 arboard = "3"
+arc-swap = "1.7"
 async-trait = "0.1"
 base64 = "0.22"
 blake3 = "1.5"

@@ -9,6 +9,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+arc-swap = { workspace = true }
 astrid-approval = { workspace = true }
 astrid-audit = { workspace = true }
 astrid-capabilities = { workspace = true }
