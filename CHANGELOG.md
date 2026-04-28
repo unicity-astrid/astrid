@@ -9,6 +9,10 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`[[topic]]` declarations now accept trailing-suffix wildcards (e.g. `llm.v1.request.generate.*`).** The previous validator rejected every wildcard in topic names, which broke fan-out topic families where the trailing segment names a provider, source, or recipient that can't be enumerated at manifest-author time (multiple LLM providers, multiple session callbacks, hook fan-out targets). Every member of the family shares the same envelope, so a pattern is the genuine schema declaration. Mid-segment (`a.*.b`) and leading (`*.b`) wildcards are still rejected — the bus matcher only supports trailing-suffix wildcards, so those would silently never fire. Bare `*` is rejected as too broad. Mirrors `ipc_subscribe`'s host-side check.
+
 ### Breaking
 
 - **`PrincipalProfile` files moved out of the principal home directory.** Per-principal `profile.toml` now lives at `~/.astrid/etc/profiles/{principal}.toml` instead of `~/.astrid/home/{principal}/.config/profile.toml`. Profile contents are 100% system policy (enabled, groups, grants, revokes, quotas, auth public keys, egress, process allowlist) — keeping them inside the principal's home directory let any capsule with `fs_read = ["home://"]` read its own policy file (and `fs_write` would have let it self-elevate). The new location sits outside the `home://` VFS scheme entirely. `PrincipalProfile::path_for(&PrincipalHome)` is now `PrincipalProfile::path_for(&AstridHome, &PrincipalId)`; same for `load`/`save`. A one-shot migration in `seed_default_principal_admin_profile` moves any legacy `home/{principal}/.config/profile.toml` to the new location on next boot. (#672)

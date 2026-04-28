@@ -305,29 +305,48 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
                 });
             }
 
-            // Topic names must contain only alphanumeric, hyphens, underscores, and dots.
-            // This implicitly rejects wildcards (*) and other special characters.
-            if !topic
-                .name
+            // Topic names accept alphanumeric, hyphens, underscores, dots,
+            // and a trailing-suffix `*` wildcard (e.g. `llm.v1.request.*`).
+            // Trailing wildcards are needed for fan-out topic families where
+            // the trailing segment names a provider/source/recipient that
+            // can't be enumerated at manifest-author time (multiple LLM
+            // providers, multiple session callbacks, etc.) — every member of
+            // the family shares the same envelope, so the schema applies to
+            // the pattern. Mid-segment and leading wildcards are still
+            // rejected; the bus matcher only supports trailing-suffix
+            // wildcards. This rule mirrors `ipc_subscribe`'s host-side check.
+            let body = match topic.name.strip_suffix(".*") {
+                Some(prefix) => prefix,
+                None if topic.name == "*" => {
+                    return Err(CapsuleError::ManifestParseError {
+                        path: path.to_path_buf(),
+                        message: "[[topic]] name '*' is too broad — \
+                                  declare a specific family prefix (e.g. `foo.bar.*`)"
+                            .to_string(),
+                    });
+                },
+                None => &topic.name,
+            };
+            // The non-wildcard portion must be free of `*`.
+            if body.contains('*') {
+                return Err(CapsuleError::ManifestParseError {
+                    path: path.to_path_buf(),
+                    message: format!(
+                        "[[topic]] name '{}' has a mid-segment or non-trailing wildcard. \
+                         Wildcards are only supported as the final segment (e.g. `foo.bar.*`).",
+                        topic.name
+                    ),
+                });
+            }
+            if !body
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
             {
-                // Provide a specific message for wildcards since that's a common mistake.
-                if topic.name.contains('*') {
-                    return Err(CapsuleError::ManifestParseError {
-                        path: path.to_path_buf(),
-                        message: format!(
-                            "[[topic]] name '{}' must be a concrete topic name, not a pattern \
-                             (wildcards are not allowed in topic declarations)",
-                            topic.name
-                        ),
-                    });
-                }
                 return Err(CapsuleError::ManifestParseError {
                     path: path.to_path_buf(),
                     message: format!(
                         "[[topic]] name '{}' contains invalid characters \
-                         (only alphanumeric, hyphens, underscores, and dots are allowed)",
+                         (only alphanumeric, hyphens, underscores, dots, and a trailing `*` are allowed)",
                         topic.name
                     ),
                 });
@@ -719,8 +738,39 @@ version = "0.1.0"
     }
 
     #[test]
-    fn topic_rejects_wildcard_segment_name() {
-        for bad in &["llm.v1.*", "*.response", "a.*.b"] {
+    fn topic_accepts_trailing_wildcard() {
+        // Topic families where the trailing segment names a provider /
+        // source / recipient that can't be enumerated at manifest-author
+        // time. Every member shares the envelope, so the schema applies
+        // to the pattern.
+        for ok in &[
+            "llm.v1.request.generate.*",
+            "session.v1.response.get_messages.*",
+            "hook.v1.result.*",
+            "foo.*",
+        ] {
+            let toml = format!(
+                "{VALID_HEADER}\n\
+                 [[topic]]\n\
+                 name = \"{ok}\"\n\
+                 direction = \"publish\"\n"
+            );
+            let manifest = load_from_toml(&toml)
+                .unwrap_or_else(|e| panic!("expected '{ok}' to load, got: {e}"));
+            assert_eq!(manifest.topics[0].name, *ok);
+        }
+    }
+
+    #[test]
+    fn topic_rejects_mid_or_leading_wildcard() {
+        // The bus matcher only supports trailing-suffix wildcards. Mid-
+        // segment (`a.*.b`) and leading (`*.b`) wildcards would silently
+        // never fire, so reject them at manifest-load.
+        for (bad, expect) in &[
+            ("*.response", "mid-segment or non-trailing wildcard"),
+            ("a.*.b", "mid-segment or non-trailing wildcard"),
+            ("foo.*.bar.*", "mid-segment or non-trailing wildcard"),
+        ] {
             let toml = format!(
                 "{VALID_HEADER}\n\
                  [[topic]]\n\
@@ -730,10 +780,28 @@ version = "0.1.0"
             let err = load_from_toml(&toml).unwrap_err();
             let msg = err.to_string();
             assert!(
-                msg.contains("wildcard"),
-                "expected wildcard error for name '{bad}', got: {msg}"
+                msg.contains(expect),
+                "expected '{expect}' error for name '{bad}', got: {msg}"
             );
         }
+    }
+
+    #[test]
+    fn topic_rejects_bare_wildcard() {
+        // `*` as the entire name would match every single-segment topic
+        // — too broad to be a meaningful schema declaration.
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [[topic]]\n\
+             name = \"*\"\n\
+             direction = \"publish\"\n"
+        );
+        let err = load_from_toml(&toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("too broad"),
+            "expected 'too broad' error for bare '*', got: {msg}"
+        );
     }
 
     #[test]
