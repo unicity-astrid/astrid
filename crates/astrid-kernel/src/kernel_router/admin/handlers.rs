@@ -5,67 +5,84 @@
 //! handlers acquire [`crate::Kernel::admin_write_lock`] before touching
 //! disk state and invalidate the matching profile-cache entry after a
 //! successful write.
+//!
+//! # Pre-condition: principal must already exist
+//!
+//! `quota.set`, `caps.grant`, `caps.revoke`, `agent.enable`, and
+//! `agent.disable` all require the target principal's `profile.toml` to
+//! already exist on disk. Without this gate a typo'd principal name
+//! (`alic` instead of `alice`) would silently materialize a phantom
+//! principal — `PrincipalProfile::load_from_path` returns `Default` on
+//! `NotFound`, the handler would then save the mutated default back to
+//! disk, and any future traffic claiming that principal would inherit
+//! the phantom permissions. See [`require_principal_exists`].
+//!
+//! # `default` principal protection
+//!
+//! The `default` principal is the single-tenant bootstrap anchor.
+//! `agent.delete`, `agent.disable`, and `caps.revoke` against it are
+//! rejected up front so an admin cannot accidentally lock themselves
+//! out of the management API. `caps.grant` and `quota.set` are still
+//! allowed (they only add permissions / adjust resource bounds).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use astrid_core::capability_grammar::validate_capability;
 use astrid_core::groups::{Group, GroupConfig};
 use astrid_core::principal::PrincipalId;
 use astrid_core::profile::{PrincipalProfile, ProfileError};
-use astrid_events::kernel_api::{
-    AdminKernelRequest, AdminKernelResponse, AgentSummary, GroupSummary,
-};
+use astrid_events::kernel_api::{AdminRequestKind, AdminResponseBody, AgentSummary, GroupSummary};
 use tracing::{info, warn};
 
 /// Platform label used by the identity store for agent principals
-/// created via [`AdminKernelRequest::AgentCreate`]. The per-principal
+/// created via [`AdminRequestKind::AgentCreate`]. The per-principal
 /// `platform_user_id` equals the `PrincipalId` string.
 const AGENT_IDENTITY_PLATFORM: &str = "cli";
 
-/// Dispatch an already-authorized [`AdminKernelRequest`] to the matching
+/// Dispatch an already-authorized [`AdminRequestKind`] to the matching
 /// handler.
 pub(super) async fn dispatch(
     kernel: &Arc<crate::Kernel>,
-    req: AdminKernelRequest,
-) -> AdminKernelResponse {
+    req: AdminRequestKind,
+) -> AdminResponseBody {
     match req {
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name,
             groups,
             grants,
         } => agent_create(kernel, name, groups, grants).await,
-        AdminKernelRequest::AgentDelete { principal } => agent_delete(kernel, principal).await,
-        AdminKernelRequest::AgentEnable { principal } => {
+        AdminRequestKind::AgentDelete { principal } => agent_delete(kernel, principal).await,
+        AdminRequestKind::AgentEnable { principal } => {
             agent_set_enabled(kernel, principal, true).await
         },
-        AdminKernelRequest::AgentDisable { principal } => {
+        AdminRequestKind::AgentDisable { principal } => {
             agent_set_enabled(kernel, principal, false).await
         },
-        AdminKernelRequest::AgentList => agent_list(kernel),
-        AdminKernelRequest::QuotaSet { principal, quotas } => {
+        AdminRequestKind::AgentList => agent_list(kernel),
+        AdminRequestKind::QuotaSet { principal, quotas } => {
             quota_set(kernel, principal, quotas).await
         },
-        AdminKernelRequest::QuotaGet { principal } => quota_get(kernel, &principal),
-        AdminKernelRequest::GroupCreate {
+        AdminRequestKind::QuotaGet { principal } => quota_get(kernel, &principal),
+        AdminRequestKind::GroupCreate {
             name,
             capabilities,
             description,
             unsafe_admin,
         } => group_create(kernel, name, capabilities, description, unsafe_admin).await,
-        AdminKernelRequest::GroupDelete { name } => group_delete(kernel, name).await,
-        AdminKernelRequest::GroupModify {
+        AdminRequestKind::GroupDelete { name } => group_delete(kernel, name).await,
+        AdminRequestKind::GroupModify {
             name,
             capabilities,
             description,
             unsafe_admin,
         } => group_modify(kernel, name, capabilities, description, unsafe_admin).await,
-        AdminKernelRequest::GroupList => group_list(kernel),
-        AdminKernelRequest::CapsGrant {
+        AdminRequestKind::GroupList => group_list(kernel),
+        AdminRequestKind::CapsGrant {
             principal,
             capabilities,
         } => mutate_caps(kernel, &principal, capabilities, CapsMutation::Grant).await,
-        AdminKernelRequest::CapsRevoke {
+        AdminRequestKind::CapsRevoke {
             principal,
             capabilities,
         } => mutate_caps(kernel, &principal, capabilities, CapsMutation::Revoke).await,
@@ -79,7 +96,7 @@ async fn agent_create(
     name: String,
     groups: Vec<String>,
     grants: Vec<String>,
-) -> AdminKernelResponse {
+) -> AdminResponseBody {
     let principal = match PrincipalId::new(name.clone()) {
         Ok(p) => p,
         Err(e) => return err_bad_input(format!("invalid principal name: {e}")),
@@ -156,7 +173,7 @@ async fn agent_create(
     }))
 }
 
-async fn agent_delete(kernel: &Arc<crate::Kernel>, principal: PrincipalId) -> AdminKernelResponse {
+async fn agent_delete(kernel: &Arc<crate::Kernel>, principal: PrincipalId) -> AdminResponseBody {
     if principal == PrincipalId::default() {
         return err_bad_input(
             "cannot delete the `default` principal — it is the single-tenant bootstrap anchor"
@@ -190,9 +207,27 @@ async fn agent_delete(kernel: &Arc<crate::Kernel>, principal: PrincipalId) -> Ad
         return err_internal(format!("identity store delete_user failed: {e}"));
     }
 
+    // Remove the policy file. Without this, traffic claiming this
+    // principal would re-load the old profile from disk via the
+    // cache and continue to satisfy authz checks against the old
+    // grants/groups. The home directory itself (capsule data, KV
+    // namespace, audit chain) is NOT scrubbed — reclamation is an
+    // ops concern. Best-effort delete: if the file is already gone
+    // (concurrent admin or never existed) we proceed.
+    let path = principal_profile_path(kernel, &principal);
+    if let Err(e) = std::fs::remove_file(&path)
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        return err_internal(format!(
+            "failed to remove profile.toml at {}: {e}",
+            path.display()
+        ));
+    }
+
     // Invalidate cache so subsequent authz checks for this principal
-    // re-read from disk. The home directory itself is NOT scrubbed —
-    // reclamation is an ops concern.
+    // re-resolve from disk and observe the deletion (next resolve
+    // returns Default, which under the Layer 5 enforcement preamble
+    // grants no capabilities).
     kernel.profile_cache.invalidate(&principal);
 
     info!(%principal, "Layer 6 agent.delete");
@@ -203,9 +238,23 @@ async fn agent_set_enabled(
     kernel: &Arc<crate::Kernel>,
     principal: PrincipalId,
     enabled: bool,
-) -> AdminKernelResponse {
+) -> AdminResponseBody {
+    // Refuse to disable `default` — it is the bootstrap admin anchor and
+    // disabling it would lock the operator out of the management API
+    // (the Layer 5 preamble denies every request from a disabled
+    // principal). Re-enabling `default` is fine and idempotent.
+    if !enabled && principal == PrincipalId::default() {
+        return err_bad_input(
+            "cannot disable the `default` principal — it is the single-tenant bootstrap anchor"
+                .to_string(),
+        );
+    }
+
     let _guard = kernel.admin_write_lock.lock().await;
     let path = principal_profile_path(kernel, &principal);
+    if let Err(msg) = require_principal_exists(&principal, &path) {
+        return err_bad_input(msg);
+    }
     let mut profile = match PrincipalProfile::load_from_path(&path) {
         Ok(p) => p,
         Err(e) => return err_profile(&principal, &e),
@@ -232,12 +281,12 @@ async fn agent_set_enabled(
     }))
 }
 
-fn agent_list(kernel: &Arc<crate::Kernel>) -> AdminKernelResponse {
+fn agent_list(kernel: &Arc<crate::Kernel>) -> AdminResponseBody {
     let home_dir = kernel.astrid_home.home_dir();
     let entries = match std::fs::read_dir(&home_dir) {
         Ok(e) => e,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return AdminKernelResponse::AgentList(Vec::new());
+            return AdminResponseBody::AgentList(Vec::new());
         },
         Err(e) => {
             return err_internal(format!("failed to read {}: {e}", home_dir.display()));
@@ -255,6 +304,12 @@ fn agent_list(kernel: &Arc<crate::Kernel>) -> AdminKernelResponse {
         let Ok(principal) = PrincipalId::new(name) else {
             continue;
         };
+        // Skip principals that have a home dir but no profile.toml —
+        // these are either stale (post-`agent.delete`) or never fully
+        // created. Listing them with `Default` data would be misleading.
+        if !principal_profile_path(kernel, &principal).exists() {
+            continue;
+        }
         let profile = match kernel.profile_cache.resolve(&principal) {
             Ok(p) => p,
             Err(e) => {
@@ -271,7 +326,7 @@ fn agent_list(kernel: &Arc<crate::Kernel>) -> AdminKernelResponse {
         });
     }
     summaries.sort_by(|a, b| a.principal.as_str().cmp(b.principal.as_str()));
-    AdminKernelResponse::AgentList(summaries)
+    AdminResponseBody::AgentList(summaries)
 }
 
 // ── Quotas ─────────────────────────────────────────────────────────────
@@ -280,7 +335,7 @@ async fn quota_set(
     kernel: &Arc<crate::Kernel>,
     principal: PrincipalId,
     quotas: astrid_core::profile::Quotas,
-) -> AdminKernelResponse {
+) -> AdminResponseBody {
     // Validate before taking the write lock — quick reject on bad input.
     if let Err(e) = quotas.validate() {
         return err_bad_input(format!("quotas rejected: {e}"));
@@ -288,6 +343,9 @@ async fn quota_set(
 
     let _guard = kernel.admin_write_lock.lock().await;
     let path = principal_profile_path(kernel, &principal);
+    if let Err(msg) = require_principal_exists(&principal, &path) {
+        return err_bad_input(msg);
+    }
     let mut profile = match PrincipalProfile::load_from_path(&path) {
         Ok(p) => p,
         Err(e) => return err_profile(&principal, &e),
@@ -300,9 +358,17 @@ async fn quota_set(
     success_json(serde_json::json!({ "principal": principal.as_str() }))
 }
 
-fn quota_get(kernel: &Arc<crate::Kernel>, principal: &PrincipalId) -> AdminKernelResponse {
+fn quota_get(kernel: &Arc<crate::Kernel>, principal: &PrincipalId) -> AdminResponseBody {
+    // quota.get reads through the cache. The cache.resolve path
+    // returns Default on missing profile.toml, so a typo'd name would
+    // silently return Default-shaped quotas without revealing the
+    // mistake. Surface "no such principal" as a hard error.
+    let path = principal_profile_path(kernel, principal);
+    if let Err(msg) = require_principal_exists(principal, &path) {
+        return err_bad_input(msg);
+    }
     match kernel.profile_cache.resolve(principal) {
-        Ok(profile) => AdminKernelResponse::Quotas(profile.quotas.clone()),
+        Ok(profile) => AdminResponseBody::Quotas(profile.quotas.clone()),
         Err(e) => err_profile(principal, &e),
     }
 }
@@ -315,7 +381,7 @@ async fn group_create(
     capabilities: Vec<String>,
     description: Option<String>,
     unsafe_admin: bool,
-) -> AdminKernelResponse {
+) -> AdminResponseBody {
     let group = Group {
         capabilities,
         description,
@@ -330,7 +396,7 @@ async fn group_create(
     commit_group_config(kernel, next)
 }
 
-async fn group_delete(kernel: &Arc<crate::Kernel>, name: String) -> AdminKernelResponse {
+async fn group_delete(kernel: &Arc<crate::Kernel>, name: String) -> AdminResponseBody {
     let _guard = kernel.admin_write_lock.lock().await;
     let current = kernel.groups.load_full();
     let next = match current.remove_group(&name) {
@@ -352,7 +418,7 @@ async fn group_modify(
     capabilities: Option<Vec<String>>,
     description: Option<Option<String>>,
     unsafe_admin: Option<bool>,
-) -> AdminKernelResponse {
+) -> AdminResponseBody {
     let _guard = kernel.admin_write_lock.lock().await;
     let current = kernel.groups.load_full();
     let next = match current.modify_custom_group(&name, capabilities, description, unsafe_admin) {
@@ -362,7 +428,7 @@ async fn group_modify(
     commit_group_config(kernel, next)
 }
 
-fn group_list(kernel: &Arc<crate::Kernel>) -> AdminKernelResponse {
+fn group_list(kernel: &Arc<crate::Kernel>) -> AdminResponseBody {
     let cfg = kernel.groups.load_full();
     let mut summaries: Vec<GroupSummary> = cfg
         .iter()
@@ -375,12 +441,12 @@ fn group_list(kernel: &Arc<crate::Kernel>) -> AdminKernelResponse {
         })
         .collect();
     summaries.sort_by(|a, b| a.name.cmp(&b.name));
-    AdminKernelResponse::GroupList(summaries)
+    AdminResponseBody::GroupList(summaries)
 }
 
 /// Commit a new [`GroupConfig`] to disk and the
 /// [`ArcSwap`](arc_swap::ArcSwap). Caller must hold the admin write lock.
-fn commit_group_config(kernel: &Arc<crate::Kernel>, next: GroupConfig) -> AdminKernelResponse {
+fn commit_group_config(kernel: &Arc<crate::Kernel>, next: GroupConfig) -> AdminResponseBody {
     let path = GroupConfig::path_for(&kernel.astrid_home);
     if let Err(e) = next.save_to_path(&path) {
         return err_internal(format!("groups.toml save failed: {e}"));
@@ -401,7 +467,7 @@ async fn mutate_caps(
     principal: &PrincipalId,
     capabilities: Vec<String>,
     which: CapsMutation,
-) -> AdminKernelResponse {
+) -> AdminResponseBody {
     if capabilities.is_empty() {
         return err_bad_input("capabilities must not be empty".to_string());
     }
@@ -411,8 +477,23 @@ async fn mutate_caps(
         }
     }
 
+    // Refuse to revoke from `default` — it is the bootstrap admin
+    // anchor and any revoke risks locking the operator out
+    // (`self:*`, `*`, or `system:shutdown`-shaped revokes all bite).
+    // Grants on `default` are still allowed; they only add power.
+    if matches!(which, CapsMutation::Revoke) && principal == &PrincipalId::default() {
+        return err_bad_input(
+            "cannot revoke capabilities from the `default` principal — it is the \
+             single-tenant bootstrap anchor"
+                .to_string(),
+        );
+    }
+
     let _guard = kernel.admin_write_lock.lock().await;
     let path = principal_profile_path(kernel, principal);
+    if let Err(msg) = require_principal_exists(principal, &path) {
+        return err_bad_input(msg);
+    }
     let mut profile = match PrincipalProfile::load_from_path(&path) {
         Ok(p) => p,
         Err(e) => return err_profile(principal, &e),
@@ -454,20 +535,36 @@ fn principal_profile_path(kernel: &Arc<crate::Kernel>, principal: &PrincipalId) 
     PrincipalProfile::path_for(&ph)
 }
 
-fn err_bad_input(msg: String) -> AdminKernelResponse {
+/// Reject mutating-handler calls that target a principal with no
+/// `profile.toml` on disk. Required because
+/// [`PrincipalProfile::load_from_path`] returns `Default` on `NotFound`,
+/// which would let a typo'd name silently materialize a phantom
+/// principal with grants on disk.
+fn require_principal_exists(principal: &PrincipalId, path: &Path) -> Result<(), String> {
+    if path.exists() {
+        Ok(())
+    } else {
+        Err(format!(
+            "principal {principal} does not exist (no profile.toml at {})",
+            path.display()
+        ))
+    }
+}
+
+fn err_bad_input(msg: String) -> AdminResponseBody {
     warn!(error = %msg, "admin request rejected: bad input");
-    AdminKernelResponse::Error(msg)
+    AdminResponseBody::Error(msg)
 }
 
-fn err_internal(msg: String) -> AdminKernelResponse {
+fn err_internal(msg: String) -> AdminResponseBody {
     warn!(error = %msg, "admin request failed: internal error");
-    AdminKernelResponse::Error(msg)
+    AdminResponseBody::Error(msg)
 }
 
-fn err_profile(principal: &PrincipalId, e: &ProfileError) -> AdminKernelResponse {
+fn err_profile(principal: &PrincipalId, e: &ProfileError) -> AdminResponseBody {
     err_internal(format!("profile error for {principal}: {e}"))
 }
 
-fn success_json(val: serde_json::Value) -> AdminKernelResponse {
-    AdminKernelResponse::Success(val)
+fn success_json(val: serde_json::Value) -> AdminResponseBody {
+    AdminResponseBody::Success(val)
 }

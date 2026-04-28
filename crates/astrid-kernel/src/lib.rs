@@ -910,7 +910,7 @@ pub(crate) async fn test_kernel_with_home(home: astrid_core::dirs::AstridHome) -
         GroupConfig::load(&home).expect("test kernel: load groups"),
     ));
 
-    Arc::new(Kernel {
+    let kernel = Arc::new(Kernel {
         session_id,
         event_bus,
         capsules,
@@ -936,7 +936,15 @@ pub(crate) async fn test_kernel_with_home(home: astrid_core::dirs::AstridHome) -
         groups,
         astrid_home: home,
         admin_write_lock: Mutex::new(()),
-    })
+    });
+    // Spawn the Layer 6 admin dispatcher so IPC-driven tests can drive
+    // the full publish → response loop. State-mutating tests that call
+    // `handlers::dispatch` directly are unaffected — those messages
+    // never hit the bus.
+    drop(kernel_router::admin::spawn_admin_router(Arc::clone(
+        &kernel,
+    )));
+    kernel
 }
 
 /// Loads the runtime signing key from `~/.astrid/keys/runtime.key`, generating a

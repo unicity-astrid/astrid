@@ -1,7 +1,7 @@
 //! Layer 6 admin dispatcher (issue #672).
 //!
 //! Subscribes to `astrid.v1.admin.*` and routes every variant of
-//! [`AdminKernelRequest`] through the same capability-enforcement
+//! [`AdminRequestKind`] through the same capability-enforcement
 //! preamble introduced in issue #670 (Layer 5). On allow, the mutating
 //! handlers in [`handlers`] acquire
 //! [`Kernel::admin_write_lock`](crate::Kernel::admin_write_lock) before
@@ -17,7 +17,12 @@
 //! [`AuditAction::AdminRequest`] entry. `method` is the wire name
 //! (`"admin.agent.create"`, etc.); `target_principal` is `Some` for
 //! variants that operate on another principal and `None` otherwise.
+//! `params` captures the full request payload (capabilities granted,
+//! quotas set, group definition) for forensic replay without diffing
+//! `profile.toml` snapshots.
 
+#[cfg(test)]
+mod enforcement_tests;
 mod handlers;
 #[cfg(test)]
 mod state_tests;
@@ -29,11 +34,14 @@ use std::sync::Arc;
 use astrid_audit::{AuditOutcome, AuthorizationProof};
 use astrid_core::principal::PrincipalId;
 use astrid_events::ipc::IpcPayload;
-use astrid_events::kernel_api::{AdminKernelRequest, AdminKernelResponse};
+use astrid_events::kernel_api::{
+    AdminKernelRequest, AdminKernelResponse, AdminRequestKind, AdminResponseBody,
+};
 use tracing::warn;
 
 use super::{
-    AuthorityScope, authorize_request, publish_response, record_admin_audit, resolve_caller,
+    AdminAuditEntry, AuthorityScope, authorize_request, publish_response, record_admin_audit,
+    resolve_caller,
 };
 
 /// Admin IPC input topic prefix.
@@ -44,7 +52,7 @@ const ADMIN_RESPONSE_PREFIX: &str = "astrid.v1.admin.response.";
 /// Spawn the admin dispatcher task. Mirrors [`super::spawn_kernel_router`]
 /// but listens on `astrid.v1.admin.*` and parses
 /// [`AdminKernelRequest`] payloads.
-pub(super) fn spawn_admin_router(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHandle<()> {
+pub(crate) fn spawn_admin_router(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHandle<()> {
     let mut receiver = kernel.event_bus.subscribe_topic("astrid.v1.admin.*");
 
     tokio::spawn(async move {
@@ -90,32 +98,31 @@ fn admin_response_topic(input_topic: &str) -> String {
 /// Return the authority scope `req` exercises for `caller`.
 ///
 /// Self-scoped when the target principal equals the caller
-/// ([`AdminKernelRequest::QuotaGet`] / [`AdminKernelRequest::QuotaSet`]
-/// / [`AdminKernelRequest::AgentList`] — the last scoped as "self" so
+/// ([`AdminRequestKind::QuotaGet`] / [`AdminRequestKind::QuotaSet`]
+/// / [`AdminRequestKind::AgentList`] — the last scoped as "self" so
 /// agents can see their own row). Everything else is cross-tenant,
 /// including creation / group operations that are intrinsically global.
 #[must_use]
-pub fn resolve_admin_scope(req: &AdminKernelRequest, caller: &PrincipalId) -> AuthorityScope {
+pub fn resolve_admin_scope(req: &AdminRequestKind, caller: &PrincipalId) -> AuthorityScope {
     match req {
-        AdminKernelRequest::QuotaGet { principal }
-        | AdminKernelRequest::QuotaSet { principal, .. } => {
+        AdminRequestKind::QuotaGet { principal } | AdminRequestKind::QuotaSet { principal, .. } => {
             if principal == caller {
                 AuthorityScope::Self_
             } else {
                 AuthorityScope::Global
             }
         },
-        AdminKernelRequest::AgentList => AuthorityScope::Self_,
-        AdminKernelRequest::AgentCreate { .. }
-        | AdminKernelRequest::AgentDelete { .. }
-        | AdminKernelRequest::AgentEnable { .. }
-        | AdminKernelRequest::AgentDisable { .. }
-        | AdminKernelRequest::GroupCreate { .. }
-        | AdminKernelRequest::GroupDelete { .. }
-        | AdminKernelRequest::GroupModify { .. }
-        | AdminKernelRequest::GroupList
-        | AdminKernelRequest::CapsGrant { .. }
-        | AdminKernelRequest::CapsRevoke { .. } => AuthorityScope::Global,
+        AdminRequestKind::AgentList => AuthorityScope::Self_,
+        AdminRequestKind::AgentCreate { .. }
+        | AdminRequestKind::AgentDelete { .. }
+        | AdminRequestKind::AgentEnable { .. }
+        | AdminRequestKind::AgentDisable { .. }
+        | AdminRequestKind::GroupCreate { .. }
+        | AdminRequestKind::GroupDelete { .. }
+        | AdminRequestKind::GroupModify { .. }
+        | AdminRequestKind::GroupList
+        | AdminRequestKind::CapsGrant { .. }
+        | AdminRequestKind::CapsRevoke { .. } => AuthorityScope::Global,
     }
 }
 
@@ -130,68 +137,68 @@ pub fn resolve_admin_scope(req: &AdminKernelRequest, caller: &PrincipalId) -> Au
 /// global — there is no "self" variant of `group:create`.
 #[must_use]
 pub fn required_capability_for_admin_request(
-    req: &AdminKernelRequest,
+    req: &AdminRequestKind,
     scope: AuthorityScope,
 ) -> &'static str {
     match (req, scope) {
-        (AdminKernelRequest::AgentCreate { .. }, _) => "agent:create",
-        (AdminKernelRequest::AgentDelete { .. }, _) => "agent:delete",
-        (AdminKernelRequest::AgentEnable { .. }, _) => "agent:enable",
-        (AdminKernelRequest::AgentDisable { .. }, _) => "agent:disable",
-        (AdminKernelRequest::AgentList, AuthorityScope::Self_) => "self:agent:list",
-        (AdminKernelRequest::AgentList, AuthorityScope::Global) => "agent:list",
-        (AdminKernelRequest::QuotaSet { .. }, AuthorityScope::Self_) => "self:quota:set",
-        (AdminKernelRequest::QuotaSet { .. }, AuthorityScope::Global) => "quota:set",
-        (AdminKernelRequest::QuotaGet { .. }, AuthorityScope::Self_) => "self:quota:get",
-        (AdminKernelRequest::QuotaGet { .. }, AuthorityScope::Global) => "quota:get",
-        (AdminKernelRequest::GroupCreate { .. }, _) => "group:create",
-        (AdminKernelRequest::GroupDelete { .. }, _) => "group:delete",
-        (AdminKernelRequest::GroupModify { .. }, _) => "group:modify",
-        (AdminKernelRequest::GroupList, _) => "group:list",
-        (AdminKernelRequest::CapsGrant { .. }, _) => "caps:grant",
-        (AdminKernelRequest::CapsRevoke { .. }, _) => "caps:revoke",
+        (AdminRequestKind::AgentCreate { .. }, _) => "agent:create",
+        (AdminRequestKind::AgentDelete { .. }, _) => "agent:delete",
+        (AdminRequestKind::AgentEnable { .. }, _) => "agent:enable",
+        (AdminRequestKind::AgentDisable { .. }, _) => "agent:disable",
+        (AdminRequestKind::AgentList, AuthorityScope::Self_) => "self:agent:list",
+        (AdminRequestKind::AgentList, AuthorityScope::Global) => "agent:list",
+        (AdminRequestKind::QuotaSet { .. }, AuthorityScope::Self_) => "self:quota:set",
+        (AdminRequestKind::QuotaSet { .. }, AuthorityScope::Global) => "quota:set",
+        (AdminRequestKind::QuotaGet { .. }, AuthorityScope::Self_) => "self:quota:get",
+        (AdminRequestKind::QuotaGet { .. }, AuthorityScope::Global) => "quota:get",
+        (AdminRequestKind::GroupCreate { .. }, _) => "group:create",
+        (AdminRequestKind::GroupDelete { .. }, _) => "group:delete",
+        (AdminRequestKind::GroupModify { .. }, _) => "group:modify",
+        (AdminRequestKind::GroupList, _) => "group:list",
+        (AdminRequestKind::CapsGrant { .. }, _) => "caps:grant",
+        (AdminRequestKind::CapsRevoke { .. }, _) => "caps:revoke",
     }
 }
 
-/// Stable wire-name identifier for an [`AdminKernelRequest`] — used as
+/// Stable wire-name identifier for an [`AdminRequestKind`] — used as
 /// the `method` field on every [`AuditAction::AdminRequest`] entry.
 #[must_use]
-pub fn admin_request_method(req: &AdminKernelRequest) -> &'static str {
+pub fn admin_request_method(req: &AdminRequestKind) -> &'static str {
     match req {
-        AdminKernelRequest::AgentCreate { .. } => "admin.agent.create",
-        AdminKernelRequest::AgentDelete { .. } => "admin.agent.delete",
-        AdminKernelRequest::AgentEnable { .. } => "admin.agent.enable",
-        AdminKernelRequest::AgentDisable { .. } => "admin.agent.disable",
-        AdminKernelRequest::AgentList => "admin.agent.list",
-        AdminKernelRequest::QuotaSet { .. } => "admin.quota.set",
-        AdminKernelRequest::QuotaGet { .. } => "admin.quota.get",
-        AdminKernelRequest::GroupCreate { .. } => "admin.group.create",
-        AdminKernelRequest::GroupDelete { .. } => "admin.group.delete",
-        AdminKernelRequest::GroupModify { .. } => "admin.group.modify",
-        AdminKernelRequest::GroupList => "admin.group.list",
-        AdminKernelRequest::CapsGrant { .. } => "admin.caps.grant",
-        AdminKernelRequest::CapsRevoke { .. } => "admin.caps.revoke",
+        AdminRequestKind::AgentCreate { .. } => "admin.agent.create",
+        AdminRequestKind::AgentDelete { .. } => "admin.agent.delete",
+        AdminRequestKind::AgentEnable { .. } => "admin.agent.enable",
+        AdminRequestKind::AgentDisable { .. } => "admin.agent.disable",
+        AdminRequestKind::AgentList => "admin.agent.list",
+        AdminRequestKind::QuotaSet { .. } => "admin.quota.set",
+        AdminRequestKind::QuotaGet { .. } => "admin.quota.get",
+        AdminRequestKind::GroupCreate { .. } => "admin.group.create",
+        AdminRequestKind::GroupDelete { .. } => "admin.group.delete",
+        AdminRequestKind::GroupModify { .. } => "admin.group.modify",
+        AdminRequestKind::GroupList => "admin.group.list",
+        AdminRequestKind::CapsGrant { .. } => "admin.caps.grant",
+        AdminRequestKind::CapsRevoke { .. } => "admin.caps.revoke",
     }
 }
 
 /// Borrow the target principal for audit purposes — `Some` only when the
 /// request operates on a principal distinct from the caller.
 #[must_use]
-pub fn admin_target_principal(req: &AdminKernelRequest) -> Option<&PrincipalId> {
+pub fn admin_target_principal(req: &AdminRequestKind) -> Option<&PrincipalId> {
     match req {
-        AdminKernelRequest::AgentDelete { principal }
-        | AdminKernelRequest::AgentEnable { principal }
-        | AdminKernelRequest::AgentDisable { principal }
-        | AdminKernelRequest::QuotaSet { principal, .. }
-        | AdminKernelRequest::QuotaGet { principal }
-        | AdminKernelRequest::CapsGrant { principal, .. }
-        | AdminKernelRequest::CapsRevoke { principal, .. } => Some(principal),
-        AdminKernelRequest::AgentCreate { .. }
-        | AdminKernelRequest::AgentList
-        | AdminKernelRequest::GroupCreate { .. }
-        | AdminKernelRequest::GroupDelete { .. }
-        | AdminKernelRequest::GroupModify { .. }
-        | AdminKernelRequest::GroupList => None,
+        AdminRequestKind::AgentDelete { principal }
+        | AdminRequestKind::AgentEnable { principal }
+        | AdminRequestKind::AgentDisable { principal }
+        | AdminRequestKind::QuotaSet { principal, .. }
+        | AdminRequestKind::QuotaGet { principal }
+        | AdminRequestKind::CapsGrant { principal, .. }
+        | AdminRequestKind::CapsRevoke { principal, .. } => Some(principal),
+        AdminRequestKind::AgentCreate { .. }
+        | AdminRequestKind::AgentList
+        | AdminRequestKind::GroupCreate { .. }
+        | AdminRequestKind::GroupDelete { .. }
+        | AdminRequestKind::GroupModify { .. }
+        | AdminRequestKind::GroupList => None,
     }
 }
 
@@ -202,23 +209,31 @@ async fn handle_admin_request(
     req: AdminKernelRequest,
 ) {
     let response_topic = admin_response_topic(&topic);
-    let method = admin_request_method(&req);
-    let scope = resolve_admin_scope(&req, &caller);
-    let required_cap = required_capability_for_admin_request(&req, scope);
-    let target = admin_target_principal(&req).cloned();
+    let request_id = req.request_id.clone();
+    let method = admin_request_method(&req.kind);
+    let scope = resolve_admin_scope(&req.kind, &caller);
+    let required_cap = required_capability_for_admin_request(&req.kind, scope);
+    let target = admin_target_principal(&req.kind).cloned();
+    // Capture the params field for the audit entry — clients submitting
+    // malformed JSON never reach this point, so serialization is
+    // infallible for shapes we accept.
+    let audit_params = serde_json::to_value(&req.kind).ok();
 
     match authorize_request(kernel, &caller, required_cap) {
         Ok(()) => {
             record_admin_audit(
                 kernel,
-                &caller,
-                method,
-                required_cap,
-                target.clone(),
-                AuthorizationProof::System {
-                    reason: format!("policy allow: {caller} holds {required_cap}"),
+                AdminAuditEntry {
+                    caller: &caller,
+                    method,
+                    required_cap,
+                    target_principal: target.clone(),
+                    params: audit_params.clone(),
+                    authorization: AuthorizationProof::System {
+                        reason: format!("policy allow: {caller} holds {required_cap}"),
+                    },
+                    outcome: AuditOutcome::success(),
                 },
-                AuditOutcome::success(),
             );
         },
         Err(e) => {
@@ -227,30 +242,39 @@ async fn handle_admin_request(
                 method = method,
                 principal = %caller,
                 required = required_cap,
+                error = %e,
                 "Permission check denied admin request"
             );
             record_admin_audit(
                 kernel,
-                &caller,
-                method,
-                required_cap,
-                target,
-                AuthorizationProof::Denied {
-                    reason: e.to_string(),
+                AdminAuditEntry {
+                    caller: &caller,
+                    method,
+                    required_cap,
+                    target_principal: target,
+                    params: audit_params,
+                    authorization: AuthorizationProof::Denied {
+                        reason: e.to_string(),
+                    },
+                    outcome: AuditOutcome::failure(e.to_string()),
                 },
-                AuditOutcome::failure(e.to_string()),
             );
             publish_response(
                 kernel,
                 response_topic,
-                AdminKernelResponse::Error(format!(
-                    "permission denied: missing capability {required_cap}"
-                )),
+                AdminKernelResponse::for_request(
+                    request_id,
+                    AdminResponseBody::Error(e.to_string()),
+                ),
             );
             return;
         },
     }
 
-    let res = handlers::dispatch(kernel, req).await;
-    publish_response(kernel, response_topic, res);
+    let body = handlers::dispatch(kernel, req.kind).await;
+    publish_response(
+        kernel,
+        response_topic,
+        AdminKernelResponse::for_request(request_id, body),
+    );
 }

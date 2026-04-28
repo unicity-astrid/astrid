@@ -17,7 +17,7 @@ use std::sync::Arc;
 use astrid_capabilities::CapabilityCheck;
 use astrid_core::principal::PrincipalId;
 use astrid_core::{GroupConfig, PrincipalProfile};
-use astrid_events::kernel_api::AdminKernelRequest;
+use astrid_events::kernel_api::AdminRequestKind;
 
 use super::{
     AuthorityScope, admin_request_method, admin_response_topic, admin_target_principal,
@@ -28,49 +28,49 @@ fn pid(name: &str) -> PrincipalId {
     PrincipalId::new(name).unwrap()
 }
 
-fn all_admin_variants() -> Vec<AdminKernelRequest> {
+fn all_admin_variants() -> Vec<AdminRequestKind> {
     vec![
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "n".into(),
             groups: Vec::new(),
             grants: Vec::new(),
         },
-        AdminKernelRequest::AgentDelete {
+        AdminRequestKind::AgentDelete {
             principal: pid("a"),
         },
-        AdminKernelRequest::AgentEnable {
+        AdminRequestKind::AgentEnable {
             principal: pid("a"),
         },
-        AdminKernelRequest::AgentDisable {
+        AdminRequestKind::AgentDisable {
             principal: pid("a"),
         },
-        AdminKernelRequest::AgentList,
-        AdminKernelRequest::QuotaSet {
+        AdminRequestKind::AgentList,
+        AdminRequestKind::QuotaSet {
             principal: pid("a"),
             quotas: astrid_core::profile::Quotas::default(),
         },
-        AdminKernelRequest::QuotaGet {
+        AdminRequestKind::QuotaGet {
             principal: pid("a"),
         },
-        AdminKernelRequest::GroupCreate {
+        AdminRequestKind::GroupCreate {
             name: "ops".into(),
             capabilities: vec!["capsule:install".into()],
             description: None,
             unsafe_admin: false,
         },
-        AdminKernelRequest::GroupDelete { name: "ops".into() },
-        AdminKernelRequest::GroupModify {
+        AdminRequestKind::GroupDelete { name: "ops".into() },
+        AdminRequestKind::GroupModify {
             name: "ops".into(),
             capabilities: None,
             description: None,
             unsafe_admin: None,
         },
-        AdminKernelRequest::GroupList,
-        AdminKernelRequest::CapsGrant {
+        AdminRequestKind::GroupList,
+        AdminRequestKind::CapsGrant {
             principal: pid("a"),
             capabilities: vec!["self:capsule:install".into()],
         },
-        AdminKernelRequest::CapsRevoke {
+        AdminRequestKind::CapsRevoke {
             principal: pid("a"),
             capabilities: vec!["self:*".into()],
         },
@@ -118,7 +118,7 @@ fn every_variant_has_non_empty_mapping_in_both_scopes() {
 
 #[test]
 fn quota_self_vs_global_mapping_distinguishes_principal() {
-    let req = AdminKernelRequest::QuotaSet {
+    let req = AdminRequestKind::QuotaSet {
         principal: pid("alice"),
         quotas: astrid_core::profile::Quotas::default(),
     };
@@ -135,17 +135,11 @@ fn quota_self_vs_global_mapping_distinguishes_principal() {
 #[test]
 fn agent_list_maps_self_to_self_prefix() {
     assert_eq!(
-        required_capability_for_admin_request(
-            &AdminKernelRequest::AgentList,
-            AuthorityScope::Self_
-        ),
+        required_capability_for_admin_request(&AdminRequestKind::AgentList, AuthorityScope::Self_),
         "self:agent:list"
     );
     assert_eq!(
-        required_capability_for_admin_request(
-            &AdminKernelRequest::AgentList,
-            AuthorityScope::Global
-        ),
+        required_capability_for_admin_request(&AdminRequestKind::AgentList, AuthorityScope::Global),
         "agent:list"
     );
 }
@@ -164,7 +158,7 @@ fn every_variant_has_a_method_label() {
 #[test]
 fn resolve_admin_scope_self_when_target_is_caller() {
     let caller = pid("alice");
-    let req = AdminKernelRequest::QuotaSet {
+    let req = AdminRequestKind::QuotaSet {
         principal: caller.clone(),
         quotas: astrid_core::profile::Quotas::default(),
     };
@@ -174,7 +168,7 @@ fn resolve_admin_scope_self_when_target_is_caller() {
 #[test]
 fn resolve_admin_scope_global_when_target_differs() {
     let caller = pid("alice");
-    let req = AdminKernelRequest::QuotaSet {
+    let req = AdminRequestKind::QuotaSet {
         principal: pid("bob"),
         quotas: astrid_core::profile::Quotas::default(),
     };
@@ -184,14 +178,14 @@ fn resolve_admin_scope_global_when_target_differs() {
 #[test]
 fn admin_target_principal_some_for_cross_tenant_variants() {
     assert!(
-        admin_target_principal(&AdminKernelRequest::QuotaSet {
+        admin_target_principal(&AdminRequestKind::QuotaSet {
             principal: pid("a"),
             quotas: astrid_core::profile::Quotas::default(),
         })
         .is_some()
     );
     assert!(
-        admin_target_principal(&AdminKernelRequest::CapsGrant {
+        admin_target_principal(&AdminRequestKind::CapsGrant {
             principal: pid("a"),
             capabilities: vec!["self:capsule:install".into()],
         })
@@ -201,10 +195,10 @@ fn admin_target_principal_some_for_cross_tenant_variants() {
 
 #[test]
 fn admin_target_principal_none_for_self_or_collection_variants() {
-    assert!(admin_target_principal(&AdminKernelRequest::AgentList).is_none());
-    assert!(admin_target_principal(&AdminKernelRequest::GroupList).is_none());
+    assert!(admin_target_principal(&AdminRequestKind::AgentList).is_none());
+    assert!(admin_target_principal(&AdminRequestKind::GroupList).is_none());
     assert!(
-        admin_target_principal(&AdminKernelRequest::AgentCreate {
+        admin_target_principal(&AdminRequestKind::AgentCreate {
             name: "n".into(),
             groups: Vec::new(),
             grants: Vec::new(),

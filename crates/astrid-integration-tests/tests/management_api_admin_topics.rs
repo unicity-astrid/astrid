@@ -31,7 +31,10 @@ use astrid_kernel::kernel_router::admin::{
     admin_request_method, admin_target_principal, required_capability_for_admin_request,
     resolve_admin_scope,
 };
-use astrid_types::kernel::{AdminKernelRequest, AdminKernelResponse, AgentSummary, GroupSummary};
+use astrid_types::kernel::{
+    AdminKernelRequest, AdminKernelResponse, AdminRequestKind, AdminResponseBody, AgentSummary,
+    GroupSummary,
+};
 
 // ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -57,49 +60,49 @@ fn restricted_profile() -> PrincipalProfile {
     p
 }
 
-fn all_admin_variants() -> Vec<AdminKernelRequest> {
+fn all_admin_variants() -> Vec<AdminRequestKind> {
     vec![
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "new_agent".into(),
             groups: Vec::new(),
             grants: Vec::new(),
         },
-        AdminKernelRequest::AgentDelete {
+        AdminRequestKind::AgentDelete {
             principal: pid("target"),
         },
-        AdminKernelRequest::AgentEnable {
+        AdminRequestKind::AgentEnable {
             principal: pid("target"),
         },
-        AdminKernelRequest::AgentDisable {
+        AdminRequestKind::AgentDisable {
             principal: pid("target"),
         },
-        AdminKernelRequest::AgentList,
-        AdminKernelRequest::QuotaSet {
+        AdminRequestKind::AgentList,
+        AdminRequestKind::QuotaSet {
             principal: pid("target"),
             quotas: Quotas::default(),
         },
-        AdminKernelRequest::QuotaGet {
+        AdminRequestKind::QuotaGet {
             principal: pid("target"),
         },
-        AdminKernelRequest::GroupCreate {
+        AdminRequestKind::GroupCreate {
             name: "ops".into(),
             capabilities: vec!["capsule:install".into()],
             description: None,
             unsafe_admin: false,
         },
-        AdminKernelRequest::GroupDelete { name: "ops".into() },
-        AdminKernelRequest::GroupModify {
+        AdminRequestKind::GroupDelete { name: "ops".into() },
+        AdminRequestKind::GroupModify {
             name: "ops".into(),
             capabilities: None,
             description: None,
             unsafe_admin: None,
         },
-        AdminKernelRequest::GroupList,
-        AdminKernelRequest::CapsGrant {
+        AdminRequestKind::GroupList,
+        AdminRequestKind::CapsGrant {
             principal: pid("target"),
             capabilities: vec!["self:capsule:install".into()],
         },
-        AdminKernelRequest::CapsRevoke {
+        AdminRequestKind::CapsRevoke {
             principal: pid("target"),
             capabilities: vec!["self:*".into()],
         },
@@ -184,7 +187,7 @@ fn restricted_group_denies_everything_without_explicit_grants() {
 fn quota_self_scope_requires_caller_equals_target() {
     let caller = pid("alice");
 
-    let self_req = AdminKernelRequest::QuotaSet {
+    let self_req = AdminRequestKind::QuotaSet {
         principal: caller.clone(),
         quotas: Quotas::default(),
     };
@@ -193,7 +196,7 @@ fn quota_self_scope_requires_caller_equals_target() {
         "self:quota:set",
     );
 
-    let cross_req = AdminKernelRequest::QuotaSet {
+    let cross_req = AdminRequestKind::QuotaSet {
         principal: pid("bob"),
         quotas: Quotas::default(),
     };
@@ -242,16 +245,16 @@ fn admin_target_principal_matches_wire_shape() {
     // Variants carrying a principal field MUST surface it as the audit
     // target, variants that don't MUST return None.
     assert!(
-        admin_target_principal(&AdminKernelRequest::CapsGrant {
+        admin_target_principal(&AdminRequestKind::CapsGrant {
             principal: pid("alice"),
             capabilities: vec!["self:capsule:install".into()],
         })
         .is_some()
     );
-    assert!(admin_target_principal(&AdminKernelRequest::AgentList).is_none());
-    assert!(admin_target_principal(&AdminKernelRequest::GroupList).is_none());
+    assert!(admin_target_principal(&AdminRequestKind::AgentList).is_none());
+    assert!(admin_target_principal(&AdminRequestKind::GroupList).is_none());
     assert!(
-        admin_target_principal(&AdminKernelRequest::AgentCreate {
+        admin_target_principal(&AdminRequestKind::AgentCreate {
             name: "n".into(),
             groups: Vec::new(),
             grants: Vec::new(),
@@ -263,17 +266,26 @@ fn admin_target_principal_matches_wire_shape() {
 // ── Wire-format round trips ─────────────────────────────────────────
 
 #[test]
-fn admin_kernel_request_roundtrips_through_json() {
-    let req = AdminKernelRequest::CapsGrant {
-        principal: pid("alice"),
-        capabilities: vec!["self:capsule:install".into()],
-    };
+fn admin_kernel_request_roundtrips_through_json_with_request_id() {
+    // The wire shape flattens `request_id` next to `method`/`params`:
+    // { "request_id": "abc", "method": "CapsGrant", "params": {...} }
+    // so clients with multiple in-flight requests can disambiguate
+    // responses on the shared response topic.
+    let req = AdminKernelRequest::with_request_id(
+        "req-abc-123",
+        AdminRequestKind::CapsGrant {
+            principal: pid("alice"),
+            capabilities: vec!["self:capsule:install".into()],
+        },
+    );
     let v = serde_json::to_value(&req).unwrap();
-    // Verify tag/content shape for downstream clients.
+    assert_eq!(v["request_id"], "req-abc-123");
     assert_eq!(v["method"], "CapsGrant");
+
     let back: AdminKernelRequest = serde_json::from_value(v).unwrap();
-    match back {
-        AdminKernelRequest::CapsGrant {
+    assert_eq!(back.request_id.as_deref(), Some("req-abc-123"));
+    match back.kind {
+        AdminRequestKind::CapsGrant {
             principal,
             capabilities,
         } => {
@@ -285,38 +297,65 @@ fn admin_kernel_request_roundtrips_through_json() {
 }
 
 #[test]
+fn admin_kernel_request_roundtrips_without_request_id() {
+    // Single-client deployments may omit request_id entirely. The
+    // serialized JSON should not contain the field (skip_serializing_if).
+    let req: AdminKernelRequest = AdminRequestKind::AgentList.into();
+    let v = serde_json::to_value(&req).unwrap();
+    assert!(v.get("request_id").is_none(), "got: {v}");
+    assert_eq!(v["method"], "AgentList");
+
+    let back: AdminKernelRequest = serde_json::from_value(v).unwrap();
+    assert!(back.request_id.is_none());
+    assert!(matches!(back.kind, AdminRequestKind::AgentList));
+}
+
+#[test]
 fn admin_kernel_response_variants_serialize() {
-    let ok = AdminKernelResponse::Success(serde_json::json!({"status": "ok"}));
+    let ok = AdminKernelResponse::new(AdminResponseBody::Success(
+        serde_json::json!({"status": "ok"}),
+    ));
     let v = serde_json::to_value(&ok).unwrap();
     assert_eq!(v["status"], "Success");
 
-    let q = AdminKernelResponse::Quotas(Quotas::default());
+    let q = AdminKernelResponse::new(AdminResponseBody::Quotas(Quotas::default()));
     let v = serde_json::to_value(&q).unwrap();
     assert_eq!(v["status"], "Quotas");
 
-    let agents = AdminKernelResponse::AgentList(vec![AgentSummary {
+    let agents = AdminKernelResponse::new(AdminResponseBody::AgentList(vec![AgentSummary {
         principal: pid("alice"),
         enabled: true,
         groups: vec!["agent".into()],
         grants: Vec::new(),
         revokes: Vec::new(),
-    }]);
+    }]));
     let v = serde_json::to_value(&agents).unwrap();
     assert_eq!(v["status"], "AgentList");
 
-    let groups = AdminKernelResponse::GroupList(vec![GroupSummary {
+    let groups = AdminKernelResponse::new(AdminResponseBody::GroupList(vec![GroupSummary {
         name: "admin".into(),
         capabilities: vec!["*".into()],
         description: Some("admin".into()),
         unsafe_admin: false,
         builtin: true,
-    }]);
+    }]));
     let v = serde_json::to_value(&groups).unwrap();
     assert_eq!(v["status"], "GroupList");
 
-    let err = AdminKernelResponse::Error("missing capability".into());
+    let err = AdminKernelResponse::new(AdminResponseBody::Error("missing capability".into()));
     let v = serde_json::to_value(&err).unwrap();
     assert_eq!(v["status"], "Error");
+}
+
+#[test]
+fn admin_kernel_response_echoes_request_id() {
+    let resp = AdminKernelResponse::for_request(
+        Some("req-xyz".into()),
+        AdminResponseBody::Success(serde_json::json!({})),
+    );
+    let v = serde_json::to_value(&resp).unwrap();
+    assert_eq!(v["request_id"], "req-xyz");
+    assert_eq!(v["status"], "Success");
 }
 
 // ── ArcSwap hot-reload viewed from outside the kernel crate ─────────

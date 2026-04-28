@@ -113,7 +113,51 @@ pub struct CommandInfo {
 // Admin management API (issue #672 — Layer 6)
 // ---------------------------------------------------------------------------
 
-/// Admin management API requests under the `astrid.v1.admin.*` IPC prefix.
+/// Admin management API request wrapper carrying an optional client
+/// correlation ID and the typed request kind.
+///
+/// `request_id` is echoed back on [`AdminKernelResponse::request_id`] so
+/// clients with multiple in-flight requests on the same response topic
+/// can disambiguate. Single-client deployments may leave it `None`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminKernelRequest {
+    /// Optional client-supplied correlation ID. Echoed verbatim on the
+    /// response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    /// The typed request body — `tag = "method", content = "params"`.
+    #[serde(flatten)]
+    pub kind: AdminRequestKind,
+}
+
+impl AdminKernelRequest {
+    /// Build a request with no correlation ID.
+    #[must_use]
+    pub const fn new(kind: AdminRequestKind) -> Self {
+        Self {
+            request_id: None,
+            kind,
+        }
+    }
+
+    /// Build a request with a correlation ID.
+    #[must_use]
+    pub fn with_request_id(request_id: impl Into<String>, kind: AdminRequestKind) -> Self {
+        Self {
+            request_id: Some(request_id.into()),
+            kind,
+        }
+    }
+}
+
+impl From<AdminRequestKind> for AdminKernelRequest {
+    fn from(kind: AdminRequestKind) -> Self {
+        Self::new(kind)
+    }
+}
+
+/// Typed admin request body — flattened into [`AdminKernelRequest`] on
+/// the wire as `{ "method": "...", "params": {...} }`.
 ///
 /// Every variant is gated by the Layer 5 capability-enforcement preamble
 /// through a sibling of
@@ -123,7 +167,7 @@ pub struct CommandInfo {
 /// so concurrent callers cannot interleave on `groups.toml` / `profile.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params")]
-pub enum AdminKernelRequest {
+pub enum AdminRequestKind {
     /// Create a new agent identity. `name` must pass
     /// [`PrincipalId::new`](astrid_core::PrincipalId::new). Defaults to
     /// the built-in `agent` group when `groups` is empty.
@@ -228,18 +272,48 @@ pub enum AdminKernelRequest {
     },
 }
 
-/// Admin management API responses.
+/// Admin management API response wrapper carrying the echoed
+/// correlation ID and the typed response body.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminKernelResponse {
+    /// Echoed `request_id` from the [`AdminKernelRequest`] this response
+    /// answers. `None` when the client did not provide one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    /// The typed response body — `tag = "status", content = "data"`.
+    #[serde(flatten)]
+    pub body: AdminResponseBody,
+}
+
+impl AdminKernelResponse {
+    /// Build a response with the given body and no correlation ID.
+    #[must_use]
+    pub const fn new(body: AdminResponseBody) -> Self {
+        Self {
+            request_id: None,
+            body,
+        }
+    }
+
+    /// Build a response that echoes a request's correlation ID.
+    #[must_use]
+    pub fn for_request(request_id: Option<String>, body: AdminResponseBody) -> Self {
+        Self { request_id, body }
+    }
+}
+
+/// Typed admin response body.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "status", content = "data")]
-pub enum AdminKernelResponse {
+pub enum AdminResponseBody {
     /// Generic success payload — used by mutating variants where the
     /// interesting result is "the write landed."
     Success(serde_json::Value),
-    /// Response for [`AdminKernelRequest::AgentList`].
+    /// Response for [`AdminRequestKind::AgentList`].
     AgentList(Vec<AgentSummary>),
-    /// Response for [`AdminKernelRequest::GroupList`].
+    /// Response for [`AdminRequestKind::GroupList`].
     GroupList(Vec<GroupSummary>),
-    /// Response for [`AdminKernelRequest::QuotaGet`].
+    /// Response for [`AdminRequestKind::QuotaGet`].
     Quotas(Quotas),
     /// The request failed.
     Error(String),

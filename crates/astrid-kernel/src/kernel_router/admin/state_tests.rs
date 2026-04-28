@@ -16,9 +16,7 @@ use astrid_core::dirs::AstridHome;
 use astrid_core::groups::{BUILTIN_ADMIN, BUILTIN_AGENT, BUILTIN_RESTRICTED, GroupConfig};
 use astrid_core::principal::PrincipalId;
 use astrid_core::profile::{PrincipalProfile, Quotas};
-use astrid_events::kernel_api::{
-    AdminKernelRequest, AdminKernelResponse, AgentSummary, GroupSummary,
-};
+use astrid_events::kernel_api::{AdminRequestKind, AdminResponseBody, AgentSummary, GroupSummary};
 use tempfile::TempDir;
 
 use super::handlers;
@@ -35,19 +33,19 @@ fn pid(name: &str) -> PrincipalId {
     PrincipalId::new(name).unwrap()
 }
 
-fn assert_success(res: &AdminKernelResponse) {
+fn assert_success(res: &AdminResponseBody) {
     match res {
-        AdminKernelResponse::Success(_)
-        | AdminKernelResponse::Quotas(_)
-        | AdminKernelResponse::AgentList(_)
-        | AdminKernelResponse::GroupList(_) => {},
-        AdminKernelResponse::Error(msg) => panic!("expected success, got Error: {msg}"),
+        AdminResponseBody::Success(_)
+        | AdminResponseBody::Quotas(_)
+        | AdminResponseBody::AgentList(_)
+        | AdminResponseBody::GroupList(_) => {},
+        AdminResponseBody::Error(msg) => panic!("expected success, got Error: {msg}"),
     }
 }
 
-fn assert_error_contains(res: &AdminKernelResponse, needle: &str) {
+fn assert_error_contains(res: &AdminResponseBody, needle: &str) {
     match res {
-        AdminKernelResponse::Error(msg) => {
+        AdminResponseBody::Error(msg) => {
             assert!(
                 msg.contains(needle),
                 "expected error to contain {needle:?}, got: {msg}"
@@ -65,7 +63,7 @@ async fn agent_create_writes_profile_and_links_identity() {
 
     let res = handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "alice".into(),
             groups: Vec::new(),
             grants: Vec::new(),
@@ -91,7 +89,7 @@ async fn agent_create_rejects_collision_with_existing_profile() {
 
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "alice".into(),
             groups: Vec::new(),
             grants: Vec::new(),
@@ -102,7 +100,7 @@ async fn agent_create_rejects_collision_with_existing_profile() {
     // Second create with the same name → rejected.
     let res = handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "alice".into(),
             groups: Vec::new(),
             grants: Vec::new(),
@@ -117,7 +115,7 @@ async fn agent_create_rejects_invalid_name() {
     let (_dir, kernel) = fixture().await;
     let res = handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "bad/name".into(),
             groups: Vec::new(),
             grants: Vec::new(),
@@ -132,7 +130,7 @@ async fn agent_create_rejects_default_bootstrap_name() {
     let (_dir, kernel) = fixture().await;
     let res = handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "default".into(),
             groups: Vec::new(),
             grants: Vec::new(),
@@ -149,7 +147,7 @@ async fn agent_delete_of_default_always_rejected() {
     let (_dir, kernel) = fixture().await;
     let res = handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentDelete {
+        AdminRequestKind::AgentDelete {
             principal: PrincipalId::default(),
         },
     )
@@ -158,33 +156,169 @@ async fn agent_delete_of_default_always_rejected() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn agent_delete_removes_identity_and_invalidates_cache() {
+async fn agent_delete_removes_identity_profile_and_invalidates_cache() {
     let (_dir, kernel) = fixture().await;
 
     // Create, then resolve via cache so there's an entry to invalidate.
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "bob".into(),
             groups: Vec::new(),
             grants: Vec::new(),
         },
     )
     .await;
+    let path = PrincipalProfile::path_for(&kernel.astrid_home.principal_home(&pid("bob")));
+    assert!(path.exists(), "profile.toml should be present pre-delete");
     let _warm = kernel.profile_cache.resolve(&pid("bob")).unwrap();
 
     let res = handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentDelete {
+        AdminRequestKind::AgentDelete {
             principal: pid("bob"),
         },
     )
     .await;
     assert_success(&res);
 
-    // Link gone.
+    // Identity link gone.
     let user = kernel.identity_store.resolve("cli", "bob").await.unwrap();
     assert!(user.is_none());
+
+    // Profile file removed — without this, future authz checks for
+    // `bob` would re-load the old policy and the unlink would only
+    // close the login route, not the policy.
+    assert!(!path.exists(), "profile.toml must be removed post-delete");
+
+    // Cache cleared: re-resolving returns Default (enabled=true, no
+    // groups/grants/revokes), and the Layer 5 enforcement preamble
+    // grants no caps for that shape.
+    let after = kernel.profile_cache.resolve(&pid("bob")).unwrap();
+    assert!(after.groups.is_empty());
+    assert!(after.grants.is_empty());
+    assert!(after.revokes.is_empty());
+}
+
+// ── Phantom-principal rejection (Gemini follow-up + R-thirteen) ──
+
+#[tokio::test(flavor = "multi_thread")]
+async fn caps_grant_on_nonexistent_principal_is_rejected() {
+    // The headline 3am bug: an admin typo'd
+    // `caps.grant alic capsule:install` (missing 'e') would silently
+    // create a phantom `alic` profile with the grant. Every mutating
+    // handler now requires the profile to already exist.
+    let (_dir, kernel) = fixture().await;
+    let res = handlers::dispatch(
+        &kernel,
+        AdminRequestKind::CapsGrant {
+            principal: pid("typo_principal"),
+            capabilities: vec!["capsule:install".into()],
+        },
+    )
+    .await;
+    assert_error_contains(&res, "does not exist");
+
+    // No phantom profile.toml left on disk.
+    let phantom_path =
+        PrincipalProfile::path_for(&kernel.astrid_home.principal_home(&pid("typo_principal")));
+    assert!(!phantom_path.exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn caps_revoke_on_nonexistent_principal_is_rejected() {
+    let (_dir, kernel) = fixture().await;
+    let res = handlers::dispatch(
+        &kernel,
+        AdminRequestKind::CapsRevoke {
+            principal: pid("typo_principal"),
+            capabilities: vec!["capsule:install".into()],
+        },
+    )
+    .await;
+    assert_error_contains(&res, "does not exist");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn quota_set_on_nonexistent_principal_is_rejected() {
+    let (_dir, kernel) = fixture().await;
+    let res = handlers::dispatch(
+        &kernel,
+        AdminRequestKind::QuotaSet {
+            principal: pid("typo_principal"),
+            quotas: Quotas::default(),
+        },
+    )
+    .await;
+    assert_error_contains(&res, "does not exist");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn quota_get_on_nonexistent_principal_is_rejected() {
+    let (_dir, kernel) = fixture().await;
+    let res = handlers::dispatch(
+        &kernel,
+        AdminRequestKind::QuotaGet {
+            principal: pid("typo_principal"),
+        },
+    )
+    .await;
+    assert_error_contains(&res, "does not exist");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_enable_on_nonexistent_principal_is_rejected() {
+    let (_dir, kernel) = fixture().await;
+    let res = handlers::dispatch(
+        &kernel,
+        AdminRequestKind::AgentEnable {
+            principal: pid("typo_principal"),
+        },
+    )
+    .await;
+    assert_error_contains(&res, "does not exist");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_disable_on_nonexistent_principal_is_rejected() {
+    let (_dir, kernel) = fixture().await;
+    let res = handlers::dispatch(
+        &kernel,
+        AdminRequestKind::AgentDisable {
+            principal: pid("typo_principal"),
+        },
+    )
+    .await;
+    assert_error_contains(&res, "does not exist");
+}
+
+// ── default-principal lockout protection ─────────────────────────
+
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_disable_default_is_rejected() {
+    let (_dir, kernel) = fixture().await;
+    let res = handlers::dispatch(
+        &kernel,
+        AdminRequestKind::AgentDisable {
+            principal: PrincipalId::default(),
+        },
+    )
+    .await;
+    assert_error_contains(&res, "default");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn caps_revoke_on_default_is_rejected() {
+    let (_dir, kernel) = fixture().await;
+    let res = handlers::dispatch(
+        &kernel,
+        AdminRequestKind::CapsRevoke {
+            principal: PrincipalId::default(),
+            capabilities: vec!["self:*".into()],
+        },
+    )
+    .await;
+    assert_error_contains(&res, "default");
 }
 
 // ── agent.enable / disable ──────────────────────────────────────────
@@ -194,7 +328,7 @@ async fn agent_enable_toggle_and_cache_invalidation() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "carol".into(),
             groups: Vec::new(),
             grants: Vec::new(),
@@ -209,7 +343,7 @@ async fn agent_enable_toggle_and_cache_invalidation() {
     // Disable → cache should be invalidated so next resolve sees enabled=false.
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentDisable {
+        AdminRequestKind::AgentDisable {
             principal: pid("carol"),
         },
     )
@@ -220,7 +354,7 @@ async fn agent_enable_toggle_and_cache_invalidation() {
     // Re-enable roundtrips.
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentEnable {
+        AdminRequestKind::AgentEnable {
             principal: pid("carol"),
         },
     )
@@ -237,7 +371,7 @@ async fn agent_list_returns_every_home_dir_principal() {
     for name in ["alice", "bob"] {
         handlers::dispatch(
             &kernel,
-            AdminKernelRequest::AgentCreate {
+            AdminRequestKind::AgentCreate {
                 name: name.into(),
                 groups: Vec::new(),
                 grants: Vec::new(),
@@ -246,8 +380,8 @@ async fn agent_list_returns_every_home_dir_principal() {
         .await;
     }
 
-    let res = handlers::dispatch(&kernel, AdminKernelRequest::AgentList).await;
-    let AdminKernelResponse::AgentList(list) = res else {
+    let res = handlers::dispatch(&kernel, AdminRequestKind::AgentList).await;
+    let AdminResponseBody::AgentList(list) = res else {
         panic!("expected AgentList");
     };
     let names: Vec<&str> = list
@@ -265,7 +399,7 @@ async fn quota_set_rejects_zero_memory() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "dave".into(),
             groups: Vec::new(),
             grants: Vec::new(),
@@ -277,7 +411,7 @@ async fn quota_set_rejects_zero_memory() {
     q.max_memory_bytes = 0;
     let res = handlers::dispatch(
         &kernel,
-        AdminKernelRequest::QuotaSet {
+        AdminRequestKind::QuotaSet {
             principal: pid("dave"),
             quotas: q,
         },
@@ -291,7 +425,7 @@ async fn quota_set_updates_profile_and_invalidates_cache() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "eve".into(),
             groups: Vec::new(),
             grants: Vec::new(),
@@ -304,7 +438,7 @@ async fn quota_set_updates_profile_and_invalidates_cache() {
     q.max_memory_bytes = 8 * 1024 * 1024;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::QuotaSet {
+        AdminRequestKind::QuotaSet {
             principal: pid("eve"),
             quotas: q,
         },
@@ -316,12 +450,12 @@ async fn quota_set_updates_profile_and_invalidates_cache() {
     // quota.get returns the current value.
     let res = handlers::dispatch(
         &kernel,
-        AdminKernelRequest::QuotaGet {
+        AdminRequestKind::QuotaGet {
             principal: pid("eve"),
         },
     )
     .await;
-    let AdminKernelResponse::Quotas(got) = res else {
+    let AdminResponseBody::Quotas(got) = res else {
         panic!("expected Quotas response");
     };
     assert_eq!(got.max_memory_bytes, 8 * 1024 * 1024);
@@ -338,7 +472,7 @@ async fn group_create_swaps_arcswap_and_writes_groups_toml() {
 
     let res = handlers::dispatch(
         &kernel,
-        AdminKernelRequest::GroupCreate {
+        AdminRequestKind::GroupCreate {
             name: "ops".into(),
             capabilities: vec!["capsule:install".into()],
             description: Some("deployment operators".into()),
@@ -366,11 +500,8 @@ async fn group_create_swaps_arcswap_and_writes_groups_toml() {
 async fn group_delete_rejects_every_builtin() {
     let (_dir, kernel) = fixture().await;
     for name in [BUILTIN_ADMIN, BUILTIN_AGENT, BUILTIN_RESTRICTED] {
-        let res = handlers::dispatch(
-            &kernel,
-            AdminKernelRequest::GroupDelete { name: name.into() },
-        )
-        .await;
+        let res =
+            handlers::dispatch(&kernel, AdminRequestKind::GroupDelete { name: name.into() }).await;
         assert_error_contains(&res, "built-in");
     }
     // Built-ins still present.
@@ -386,7 +517,7 @@ async fn group_modify_rejects_every_builtin() {
     for name in [BUILTIN_ADMIN, BUILTIN_AGENT, BUILTIN_RESTRICTED] {
         let res = handlers::dispatch(
             &kernel,
-            AdminKernelRequest::GroupModify {
+            AdminRequestKind::GroupModify {
                 name: name.into(),
                 capabilities: Some(vec!["audit:read".into()]),
                 description: None,
@@ -403,7 +534,7 @@ async fn group_list_returns_every_group_marked_correctly() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::GroupCreate {
+        AdminRequestKind::GroupCreate {
             name: "ops".into(),
             capabilities: vec!["capsule:install".into()],
             description: None,
@@ -412,8 +543,8 @@ async fn group_list_returns_every_group_marked_correctly() {
     )
     .await;
 
-    let res = handlers::dispatch(&kernel, AdminKernelRequest::GroupList).await;
-    let AdminKernelResponse::GroupList(list) = res else {
+    let res = handlers::dispatch(&kernel, AdminRequestKind::GroupList).await;
+    let AdminResponseBody::GroupList(list) = res else {
         panic!("expected GroupList");
     };
     let by_name = |name: &str| list.iter().find(|g: &&GroupSummary| g.name == name);
@@ -432,7 +563,7 @@ async fn group_delete_reference_from_profile_does_not_elevate_privileges() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::GroupCreate {
+        AdminRequestKind::GroupCreate {
             name: "ops".into(),
             capabilities: vec!["capsule:install".into()],
             description: None,
@@ -444,7 +575,7 @@ async fn group_delete_reference_from_profile_does_not_elevate_privileges() {
     // Create an agent with `ops` group membership.
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "frank".into(),
             groups: vec!["ops".into()],
             grants: Vec::new(),
@@ -455,7 +586,7 @@ async fn group_delete_reference_from_profile_does_not_elevate_privileges() {
     // Delete `ops`. Frank's profile now has a dangling group ref.
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::GroupDelete { name: "ops".into() },
+        AdminRequestKind::GroupDelete { name: "ops".into() },
     )
     .await;
 
@@ -479,7 +610,7 @@ async fn caps_grant_appends_and_invalidates_cache() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "grace".into(),
             groups: vec!["restricted".into()],
             grants: Vec::new(),
@@ -498,7 +629,7 @@ async fn caps_grant_appends_and_invalidates_cache() {
 
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::CapsGrant {
+        AdminRequestKind::CapsGrant {
             principal: pid("grace"),
             capabilities: vec!["capsule:install".into()],
         },
@@ -519,7 +650,7 @@ async fn caps_grant_does_not_clear_matching_revoke() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "henry".into(),
             groups: vec!["admin".into()],
             grants: Vec::new(),
@@ -529,7 +660,7 @@ async fn caps_grant_does_not_clear_matching_revoke() {
     // Install a revoke first.
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::CapsRevoke {
+        AdminRequestKind::CapsRevoke {
             principal: pid("henry"),
             capabilities: vec!["self:*".into()],
         },
@@ -538,7 +669,7 @@ async fn caps_grant_does_not_clear_matching_revoke() {
     // Now grant a cap covered by the revoke pattern.
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::CapsGrant {
+        AdminRequestKind::CapsGrant {
             principal: pid("henry"),
             capabilities: vec!["self:capsule:install".into()],
         },
@@ -561,7 +692,7 @@ async fn caps_revoke_of_unheld_capability_appends_preemptive() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "ivy".into(),
             groups: vec!["restricted".into()],
             grants: Vec::new(),
@@ -570,7 +701,7 @@ async fn caps_revoke_of_unheld_capability_appends_preemptive() {
     .await;
     let res = handlers::dispatch(
         &kernel,
-        AdminKernelRequest::CapsRevoke {
+        AdminRequestKind::CapsRevoke {
             principal: pid("ivy"),
             capabilities: vec!["capsule:install".into()],
         },
@@ -591,7 +722,7 @@ async fn caps_grant_is_idempotent_no_disk_growth_on_repeat() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "indy".into(),
             groups: vec!["restricted".into()],
             grants: Vec::new(),
@@ -601,7 +732,7 @@ async fn caps_grant_is_idempotent_no_disk_growth_on_repeat() {
     for _ in 0..5 {
         handlers::dispatch(
             &kernel,
-            AdminKernelRequest::CapsGrant {
+            AdminRequestKind::CapsGrant {
                 principal: pid("indy"),
                 capabilities: vec!["capsule:install".into(), "capsule:remove".into()],
             },
@@ -628,7 +759,7 @@ async fn caps_revoke_is_idempotent_no_disk_growth_on_repeat() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "isaac".into(),
             groups: vec!["admin".into()],
             grants: Vec::new(),
@@ -638,7 +769,7 @@ async fn caps_revoke_is_idempotent_no_disk_growth_on_repeat() {
     for _ in 0..3 {
         handlers::dispatch(
             &kernel,
-            AdminKernelRequest::CapsRevoke {
+            AdminRequestKind::CapsRevoke {
                 principal: pid("isaac"),
                 capabilities: vec!["self:*".into()],
             },
@@ -655,7 +786,7 @@ async fn caps_grant_rejects_invalid_capability_grammar() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "julia".into(),
             groups: Vec::new(),
             grants: Vec::new(),
@@ -664,7 +795,7 @@ async fn caps_grant_rejects_invalid_capability_grammar() {
     .await;
     let res = handlers::dispatch(
         &kernel,
-        AdminKernelRequest::CapsGrant {
+        AdminRequestKind::CapsGrant {
             principal: pid("julia"),
             capabilities: vec!["system:shut down".into()], // space → invalid
         },
@@ -683,7 +814,7 @@ async fn concurrent_caps_grants_serialized_by_admin_write_lock() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(
         &kernel,
-        AdminKernelRequest::AgentCreate {
+        AdminRequestKind::AgentCreate {
             name: "kate".into(),
             groups: vec!["restricted".into()],
             grants: Vec::new(),
@@ -696,7 +827,7 @@ async fn concurrent_caps_grants_serialized_by_admin_write_lock() {
     let t1 = tokio::spawn(async move {
         handlers::dispatch(
             &k1,
-            AdminKernelRequest::CapsGrant {
+            AdminRequestKind::CapsGrant {
                 principal: pid("kate"),
                 capabilities: vec!["capsule:install".into()],
             },
@@ -706,7 +837,7 @@ async fn concurrent_caps_grants_serialized_by_admin_write_lock() {
     let t2 = tokio::spawn(async move {
         handlers::dispatch(
             &k2,
-            AdminKernelRequest::CapsGrant {
+            AdminRequestKind::CapsGrant {
                 principal: pid("kate"),
                 capabilities: vec!["capsule:remove".into()],
             },
