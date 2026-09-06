@@ -33,9 +33,20 @@ use uuid::Uuid;
 
 use crate::socket_client::SocketClient;
 
-/// Default timeout for the response read loop. Generous because admin
+/// Fallback timeout for the response read loop. Generous because admin
 /// writes can block on the kernel write lock.
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
+const DEFAULT_TIMEOUT_SECS: u64 = 15;
+
+/// Response timeout honoring `ASTRID_ADMIN_TIMEOUT_SECS`. Slower libc
+/// targets (musl) and heavily loaded kernels can exceed a fixed 15s on
+/// env writes; operators and CI may raise the ceiling without patching.
+fn admin_timeout() -> Duration {
+    let configured = std::env::var("ASTRID_ADMIN_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|seconds| (1..=600).contains(seconds));
+    Duration::from_secs(configured.unwrap_or(DEFAULT_TIMEOUT_SECS))
+}
 
 /// Stable wire-name suffix for an [`AdminRequestKind`].
 ///
@@ -125,7 +136,7 @@ impl AdminClient {
         Ok(Self {
             inner,
             caller,
-            timeout: DEFAULT_TIMEOUT,
+            timeout: admin_timeout(),
         })
     }
 
